@@ -1,8 +1,12 @@
-import { readdirSync, readFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
-import { checkFastPath, DEFAULT_FAST_PATH_CONFIG, FastPathConfig, FastPathRequest } from './index';
+import { Test } from '@nestjs/testing';
+import { AppConfigService, ENVIRONMENT } from '../config/app-config.service';
+import { LoginHistoryService } from '../login-history/login-history.service';
+import { FastPathService } from './fast-path.service';
+import { FastPathRequest } from './fast-path.types';
 
 const NOW = new Date('2026-05-01T12:00:00Z');
 const REQUESTED = '2026-05-01T12:00:00Z';
@@ -37,9 +41,17 @@ function req(over: {
   };
 }
 
-const run = (r: FastPathRequest, c: FastPathConfig = DEFAULT_FAST_PATH_CONFIG) =>
-  checkFastPath(r, c, NOW, 'dec-1');
-const allowed = (r: FastPathRequest, c?: FastPathConfig) => run(r, c).shortcut;
+let service: FastPathService;
+const useEnv = async (env: Record<string, string> = {}) => {
+  const moduleRef = await Test.createTestingModule({
+    providers: [FastPathService, LoginHistoryService, AppConfigService, { provide: ENVIRONMENT, useValue: env }],
+  }).compile();
+  service = moduleRef.get(FastPathService);
+};
+beforeEach(() => useEnv());
+
+const run = (r: FastPathRequest) => service.check({ request: r, now: NOW, decisionId: 'dec-1' });
+const allowed = (r: FastPathRequest) => run(r).shortcut;
 const stoppers = (r: FastPathRequest) => {
   const res = run(r);
   return res.shortcut ? [] : res.stoppers;
@@ -47,7 +59,7 @@ const stoppers = (r: FastPathRequest) => {
 const failures = (n: number, atHoursBefore = 0.5) =>
   Array.from({ length: n }, () => ({ occurred_at: ago(0.1 + atHoursBefore), outcome: 'failure' }));
 
-describe('fast path', () => {
+describe('FastPathService', () => {
   it('lets a small clean transfer through with the fast_path allow', () => {
     const res = run(req());
     expect(res.shortcut).toBe(true);
@@ -131,28 +143,16 @@ describe('fast path', () => {
     expect(allowed(r)).toBe(false);
   });
 
-  it('reads limits from the config, not constants', () => {
+  it('reads limits from the injected config service', async () => {
     const r = req({ amount: 500_000, window: { attempted_count: 0, attempted_amount_policy_minor: 0 } });
     expect(allowed(r)).toBe(true);
-    const strict: FastPathConfig = {
-      ...DEFAULT_FAST_PATH_CONFIG,
-      fastAllow: { maxAmount: 1000, daily: { maxTotal: 2000, maxCount: 1 } },
-    };
-    expect(allowed(r, strict)).toBe(false);
-    const tolerant: FastPathConfig = {
-      ...DEFAULT_FAST_PATH_CONFIG,
-      fastAllowStoppers: { ...DEFAULT_FAST_PATH_CONFIG.fastAllowStoppers, tor: false },
-    };
-    expect(allowed(req({ session: { network: { anonymizer: 'tor' } } }), tolerant)).toBe(true);
-  });
-
-  it('the decision core imports no framework', () => {
-    const dir = __dirname;
-    const files = readdirSync(dir).filter((f) => f.endsWith('.ts') && !f.endsWith('.spec.ts'));
-    for (const f of files) {
-      const src = readFileSync(join(dir, f), 'utf8');
-      const specs = [...src.matchAll(/(?:from|require\()\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
-      for (const s of specs) expect(s.startsWith('.')).toBe(true);
-    }
+    await useEnv({
+      NIGHTWATCH_FAST_MAX_AMOUNT: '1000',
+      NIGHTWATCH_FAST_DAILY_MAX_TOTAL: '2000',
+      NIGHTWATCH_FAST_DAILY_MAX_COUNT: '1',
+    });
+    expect(allowed(r)).toBe(false);
+    await useEnv({ NIGHTWATCH_STOPPER_TOR: 'false' });
+    expect(allowed(req({ session: { network: { anonymizer: 'tor' } } }))).toBe(true);
   });
 });

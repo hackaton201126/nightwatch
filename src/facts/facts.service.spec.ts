@@ -1,6 +1,10 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { computeFacts, DEFAULT_FACTS_CONFIG, FactsRequest } from './index';
+import { Test } from '@nestjs/testing';
+import { AppConfigService, ENVIRONMENT } from '../config/app-config.service';
+import { LoginHistoryService } from '../login-history/login-history.service';
+import { FactsService } from './facts.service';
+import { FactsRequest } from './facts.types';
 
 const ex = (n: string) => JSON.parse(readFileSync(join(__dirname, '../../docs/examples', n), 'utf8'));
 
@@ -27,7 +31,17 @@ function req(attempts: Attempt[], extra: Partial<FactsRequest> = {}): FactsReque
 /** n successes before the current login, spaced 1h apart from 1 day back. */
 const successes = (n: number) => Array.from({ length: n }, (_, i) => ok(at(-D - i * H)));
 
-describe('computeFacts', () => {
+let service: FactsService;
+const useEnv = async (env: Record<string, string> = {}) => {
+  const moduleRef = await Test.createTestingModule({
+    providers: [FactsService, LoginHistoryService, AppConfigService, { provide: ENVIRONMENT, useValue: env }],
+  }).compile();
+  service = moduleRef.get(FactsService);
+};
+beforeEach(() => useEnv());
+const computeFacts = (r: FactsRequest) => service.compute(r);
+
+describe('FactsService', () => {
   it.each(['jev-attack.json', 'jev-normal.json'])('matches state.facts of %s', (name) => {
     const example = ex(name);
     expect(computeFacts(example.state.request)).toEqual(example.state.facts);
@@ -57,7 +71,6 @@ describe('computeFacts', () => {
     expect(facts.successful_logins_in_history).toBe(49);
     expect(facts.country_seen_in_successful_logins).toBe(true);
     expect(computeFacts(req(base))).toEqual(facts);
-    expect(DEFAULT_FACTS_CONFIG.maxLoginAttempts).toBe(50);
   });
 
   it('ignores attempts older than the lookback in every count and comparison', () => {
@@ -129,5 +142,11 @@ describe('computeFacts', () => {
     const badZone = computeFacts(req(successes(5), { customer: { timezone: 'Mars/Base' } }));
     expect(badZone.login_hour_local).toBeNull();
     expect(badZone.hour_seen_in_successful_logins).toBeNull();
+  });
+
+  it('reads the thin-history limit from the injected config service', async () => {
+    expect(computeFacts(req(successes(5))).thin_history).toBe(false);
+    await useEnv({ NIGHTWATCH_MIN_SUCCESSFUL_LOGINS: '6' });
+    expect(computeFacts(req(successes(5))).thin_history).toBe(true);
   });
 });

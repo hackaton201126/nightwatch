@@ -4,7 +4,7 @@ import { RiskResponse } from '../contracts';
 export const MAX_DECISIONS = 50;
 
 @Injectable()
-export class DecisionStore {
+export class DecisionStoreService {
   private readonly items: RiskResponse[] = [];
 
   add(decision: RiskResponse): void {
