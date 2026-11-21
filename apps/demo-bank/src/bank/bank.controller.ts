@@ -4,15 +4,15 @@ import { riskResponseSchema, RiskResponse, ZodValidationPipe } from '@app/contra
 import { DemoBankConfigService } from '../config/demo-bank-config.service';
 import { BankPageService } from './bank-page.service';
 import { DecisionStoreService } from './decision-store.service';
-import { ScenarioSenderService } from './scenario-sender.service';
-import { ScenariosService } from './scenarios.service';
+import { TransactionSenderService } from './transaction-sender.service';
+import { CustomersService } from './customers.service';
 
 @Controller('bank')
 export class BankController {
   constructor(
     private readonly store: DecisionStoreService,
-    private readonly sender: ScenarioSenderService,
-    private readonly scenarios: ScenariosService,
+    private readonly sender: TransactionSenderService,
+    private readonly customers: CustomersService,
     private readonly page: BankPageService,
     private readonly config: DemoBankConfigService,
   ) {}
@@ -20,14 +20,20 @@ export class BankController {
   @Get()
   @Header('Content-Type', 'text/html; charset=utf-8')
   render(): string {
-    return this.page.render(this.store.list(), { configured: this.config.isConfigured(), sends: this.sender.list() });
+    const now = new Date();
+    return this.page.render(this.store.list(), {
+      configured: this.config.isConfigured(),
+      sends: this.sender.list(),
+      customers: this.customers.list().map((c) => this.customers.card(c, now)),
+    });
   }
 
-  @Post('scenarios/:id')
-  async scenario(@Param('id') id: string, @Res() res: Response): Promise<void> {
-    if (!this.scenarios.isScenarioId(id)) throw new NotFoundException('unknown scenario');
+  @Post('customers/:customerId/transactions/:path')
+  async send(@Param('customerId') customerId: string, @Param('path') path: string, @Res() res: Response): Promise<void> {
+    const customer = this.customers.find(customerId);
+    if (!customer || !this.customers.isPath(path)) throw new NotFoundException('unknown customer or path');
     if (!this.config.isConfigured()) throw new ServiceUnavailableException('webhook is not configured');
-    await this.sender.send(id);
+    await this.sender.send(customer, path);
     res.redirect(303, '/bank');
   }
 

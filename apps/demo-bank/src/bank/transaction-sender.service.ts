@@ -1,13 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { riskRequestSchema } from '@app/contracts';
 import { DemoBankConfigService, WebhookSettings } from '../config/demo-bank-config.service';
-import { ScenarioId } from './scenarios.constants';
-import { ScenariosService } from './scenarios.service';
+import { CustomerProfile, PathId } from './customers.constants';
+import { CustomersService } from './customers.service';
 
 export const MAX_SENDS = 20;
 
 export interface SendOutcome {
-  scenario: ScenarioId;
+  customerId: string;
+  customerName: string;
+  path: PathId;
   transactionId: string;
   accepted: boolean;
   /** Webhook HTTP status, or an error text when it was unreachable. */
@@ -16,11 +18,11 @@ export interface SendOutcome {
 }
 
 @Injectable()
-export class ScenarioSenderService {
+export class TransactionSenderService {
   private readonly outcomes: SendOutcome[] = [];
 
   constructor(
-    private readonly scenarios: ScenariosService,
+    private readonly customers: CustomersService,
     private readonly config: DemoBankConfigService,
   ) {}
 
@@ -28,12 +30,14 @@ export class ScenarioSenderService {
     return [...this.outcomes];
   }
 
-  async send(id: ScenarioId): Promise<SendOutcome> {
+  async send(customer: CustomerProfile, path: PathId): Promise<SendOutcome> {
     const { url, secret } = this.config.webhook() as WebhookSettings;
     const now = new Date();
-    const body = riskRequestSchema.parse(this.scenarios.buildScenario(id, now));
+    const body = riskRequestSchema.parse(this.customers.build(customer, path, now));
     const outcome: SendOutcome = {
-      scenario: id,
+      customerId: customer.id,
+      customerName: customer.name,
+      path,
       transactionId: body.transaction.transaction_id,
       accepted: false,
       detail: '',
