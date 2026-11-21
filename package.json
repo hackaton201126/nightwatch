@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:unit && npm run test:e2e",
+    "test": "npm run test:unit && npm run test:e2e && npm run test:preflight",
+    "test:preflight": "python3 -W ignore -m unittest discover -s preflight",
     "lint": "eslint .",
     "start": "node dist/main.js",
     "test:unit": "jest --runInBand --testRegex '.*\\.spec\\.ts$' --rootDir src",
