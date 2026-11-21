@@ -113,7 +113,7 @@ Jev вызывает наш код в сессии (`POST https://api.typesafe.a
 | Devin | У нас |
 |---|---|
 | Автоматизация с webhook-триггером | приём запроса; одна на банк |
-| Плейбук | порядок: схема → правила → Jev → Devin → structured output |
+| Скилл `.agents/skills/nightwatch-decision/SKILL.md` в репозитории | порядок: схема → правила → Jev → Devin → structured output |
 | Сессия и structured output (Draft 7, до 64 КБ) | одно решение; схема — [ответ](nightwatch-risk-response.schema.json) |
 | Знания (knowledge) | сигналы, пороги, признаки захвата аккаунта |
 | Репозиторий | код правил и вызова Jev (TypeScript), конфигурация банков `config/<bank>.yaml` |
@@ -129,7 +129,7 @@ loginSignals: { newDevice: 30, accessReset: 25, anonymizer: 20, unusualCountry: 
 loginWindows: { newDeviceHours: 24, accessResetHours: 24, failedLoginsHour: 3, fastToTransactionSeconds: 60 }
 decisions: { jev: 40, block: 90 }
 jev: { model: jev-latest, timeoutMs: 2000, thresholds: { stepUp: 0.2, devin: 0.4, hold: 0.6 } }
-devin: { timeoutMs: 60000, playbook: nightwatch-decision, patternScan: hourly }   # срок Devin, по умолчанию 1 мин
+devin: { timeoutMs: 60000, skill: nightwatch-decision, patternScan: hourly }   # срок Devin, по умолчанию 1 мин
 confirmation: { timeoutMinutes: 15, onTimeout: block }
 ```
 
@@ -146,8 +146,9 @@ confirmation: { timeoutMinutes: 15, onTimeout: block }
 
 ## Состав
 
-- **Репозиторий:** правила и вызов Jev (TypeScript, запуск из сессии), схемы, `config/`, плейбук и
-  знания в `devin/`, скрипт, который создаёт автоматизации, плейбук и знания через API v3.
+- **Репозиторий:** правила и вызов Jev (TypeScript, запуск из сессии), схемы, `config/`, скилл в
+  `.agents/skills/`, знания в `devin/knowledge/`, скрипт, который создаёт автоматизации и знания через
+  API v3.
 - **Демо-банк:** скрипт или страница — шлёт webhook и опрашивает сессию. Только для показа.
 - **Консоль:** Devin App.
 
@@ -159,6 +160,9 @@ confirmation: { timeoutMinutes: 15, onTimeout: block }
 - **Devin: автоматизации** — 50 запусков в час на старте, очередь настраивается.
 - **Jev: доступ.** TypeSafe с 22 сентября не регистрирует новые аккаунты; Jev есть в Vercel AI Gateway
   (`typesafe-ai/jev`).
+
+- **Не проверено в консоли.** Всё про Devin Cloud выше — из документации, не из нашего аккаунта.
+  Плейбуков у новых аккаунтов нет с 24 октября, вместо них скиллы; Devin Apps включают не всем.
 
 ## Сроки
 
