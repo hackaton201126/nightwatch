@@ -69,6 +69,17 @@ describe('demo scenarios', () => {
     tb.forEach((v, i) => expect(v - ta[i]).toBe(shift));
   });
 
+  it.each(SCENARIO_IDS)('%s: gaps between timestamps do not depend on the time of day', (id) => {
+    const gaps = (now: Date) => {
+      const ts = timestamps(buildScenario(id, now)).map(ms);
+      return ts.map((v) => v - ts[0]);
+    };
+    const base = gaps(NOW);
+    for (const minutes of [37, 5 * 60 + 11, 13 * 60 + 2]) {
+      expect(gaps(new Date(NOW.getTime() + minutes * 60_000))).toEqual(base);
+    }
+  });
+
   it('gives two builds of the same scenario different transaction ids', () => {
     for (const id of SCENARIO_IDS) {
       expect(buildScenario(id, NOW).transaction.transaction_id).not.toBe(buildScenario(id, NOW).transaction.transaction_id);
