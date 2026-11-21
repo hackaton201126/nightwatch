@@ -1,5 +1,7 @@
+import { Test } from '@nestjs/testing';
 import { riskRequestSchema } from '../contracts';
-import { buildScenario, SCENARIO_IDS, ScenarioId } from './scenarios';
+import { SCENARIO_IDS, ScenarioId } from './scenarios.constants';
+import { ScenariosService } from './scenarios.service';
 
 const ms = (s: string) => Date.parse(s);
 const dubaiHour = (s: string) => Number(s.slice(11, 13));
@@ -12,7 +14,14 @@ const timestamps = (v: unknown): string[] => {
 
 const NOW = new Date('2026-11-21T10:30:00Z'); // 14:30 Dubai
 
-describe('demo scenarios', () => {
+let scenarios: ScenariosService;
+beforeEach(async () => {
+  const moduleRef = await Test.createTestingModule({ providers: [ScenariosService] }).compile();
+  scenarios = moduleRef.get(ScenariosService);
+});
+const buildScenario = (id: ScenarioId, now: Date) => scenarios.buildScenario(id, now);
+
+describe('ScenariosService', () => {
   it.each(SCENARIO_IDS)('%s builds a schema-valid request with as_of at the transfer', (id) => {
     const req = buildScenario(id, NOW);
     expect(riskRequestSchema.safeParse(req).success).toBe(true);

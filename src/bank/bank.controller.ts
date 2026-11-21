@@ -1,27 +1,29 @@
-import { BadRequestException, Body, Controller, Get, Header, HttpCode, NotFoundException, Param, Post, Res, ServiceUnavailableException } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, NotFoundException, Param, Post, Res, ServiceUnavailableException } from '@nestjs/common';
 import type { Response } from 'express';
-import { riskResponseSchema, RiskResponse } from '../contracts';
-import { renderBankPage } from './bank-page';
-import { DecisionStore } from './decision-store';
-import { ScenarioSender } from './scenario-sender';
-import { isScenarioId } from './scenarios';
+import { riskResponseSchema, RiskResponse, ZodValidationPipe } from '../contracts';
+import { BankPageService } from './bank-page.service';
+import { DecisionStoreService } from './decision-store.service';
+import { ScenarioSenderService } from './scenario-sender.service';
+import { ScenariosService } from './scenarios.service';
 
 @Controller('bank')
 export class BankController {
   constructor(
-    private readonly store: DecisionStore,
-    private readonly sender: ScenarioSender,
+    private readonly store: DecisionStoreService,
+    private readonly sender: ScenarioSenderService,
+    private readonly scenarios: ScenariosService,
+    private readonly page: BankPageService,
   ) {}
 
   @Get()
   @Header('Content-Type', 'text/html; charset=utf-8')
-  page(): string {
-    return renderBankPage(this.store.list(), { configured: this.sender.isConfigured(), sends: this.sender.list() });
+  render(): string {
+    return this.page.render(this.store.list(), { configured: this.sender.isConfigured(), sends: this.sender.list() });
   }
 
   @Post('scenarios/:id')
   async scenario(@Param('id') id: string, @Res() res: Response): Promise<void> {
-    if (!isScenarioId(id)) throw new NotFoundException('unknown scenario');
+    if (!this.scenarios.isScenarioId(id)) throw new NotFoundException('unknown scenario');
     if (!this.sender.isConfigured()) throw new ServiceUnavailableException('webhook is not configured');
     await this.sender.send(id);
     res.redirect(303, '/bank');
@@ -34,14 +36,8 @@ export class BankController {
 
   @Post('decisions')
   @HttpCode(202)
-  receive(@Body() body: unknown): { accepted: true } {
-    const parsed = riskResponseSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new BadRequestException({
-        errors: parsed.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
-      });
-    }
-    this.store.add(parsed.data);
+  receive(@Body(new ZodValidationPipe(riskResponseSchema)) decision: RiskResponse): { accepted: true } {
+    this.store.add(decision);
     return { accepted: true };
   }
 }

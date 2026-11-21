@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { riskRequestSchema } from '../contracts';
-import { buildScenario, ScenarioId } from './scenarios';
+import { ScenarioId } from './scenarios.constants';
+import { ScenariosService } from './scenarios.service';
 
 export const MAX_SENDS = 20;
 
@@ -14,8 +15,10 @@ export interface SendOutcome {
 }
 
 @Injectable()
-export class ScenarioSender {
+export class ScenarioSenderService {
   private readonly outcomes: SendOutcome[] = [];
+
+  constructor(private readonly scenarios: ScenariosService) {}
 
   /** Read per call so the environment can change without a restart. */
   isConfigured(): boolean {
@@ -30,7 +33,7 @@ export class ScenarioSender {
     const url = process.env.NIGHTWATCH_WEBHOOK_URL as string;
     const secret = process.env.NIGHTWATCH_WEBHOOK_SECRET as string;
     const now = new Date();
-    const body = riskRequestSchema.parse(buildScenario(id, now));
+    const body = riskRequestSchema.parse(this.scenarios.buildScenario(id, now));
     const outcome: SendOutcome = {
       scenario: id,
       transactionId: body.transaction.transaction_id,
