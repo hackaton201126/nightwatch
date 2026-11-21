@@ -44,13 +44,12 @@ flowchart LR
 | `customer` | `customer_id` (псевдоним), `timezone` | — |
 | `session` | `authenticated_at`, `auth_factors`, `device_id`, `device_first_seen_at`, `last_password_reset_at`, `last_mfa_change_at`, `network {ip_ref, ip_country, anonymizer}` | — |
 | `history.recent_login_attempts` | `occurred_at`, `outcome`, `device_id`, `network` | последние 50 за 30 дней, новые первыми |
-| `history.baseline` (необязательно) | `typical_active_local_hours`, `login_countries`, `lookback_days` | стран до 10, окно до 90 дней |
 
 - **Тело до 32 КБ**, обычно около 8 КБ (50 входов по ~150 Б). Почему: webhook Devin режет тело на
   200 КБ, Jev принимает до ~32 000 токенов на вопрос, маленький промпт быстрее.
 - **Сверх предела** (больше 50 входов, старше 30 дней) — правила и Jev берут самые новые. Devin в
   спорном случае видит запрос как есть.
-- **Меньше 5 успешных входов** и нет `baseline` — «необычную страну» и «необычный час» не считаем;
+- **Меньше 5 успешных входов** в истории — «необычную страну» и «необычный час» не считаем;
   Jev и Devin видят флаг `thin_history`.
 - **Без персональных данных:** IP — только `ip_ref` (хэш) и страна; имя, телефон, номера счетов не
   нужны.
@@ -64,9 +63,9 @@ flowchart LR
 | Новое устройство `new_device` | впервые меньше 24 ч назад | `session.device_first_seen_at` | 30 |
 | Сброс доступа `recent_password_reset`, `recent_mfa_change` | пароль или MFA сменены меньше 24 ч назад | `session.last_*_at` | 25 |
 | Анонимайзер `anonymizer_network` | VPN, Tor, прокси | `session.network.anonymizer` | 20 |
-| Необычная страна `ip_country_unusual` | страны нет среди успешных входов | `baseline.login_countries` или история | 20 |
+| Необычная страна `ip_country_unusual` | страны нет среди успешных входов | история входов | 20 |
 | Неудачные входы `failed_login_attempts` | 3+ неудачные попытки за 1 ч до входа | история | 15 |
-| Необычный час `off_hours` | вход вне обычных часов клиента | `baseline.typical_active_local_hours` или история | 10 |
+| Необычный час `off_hours` | час входа (по `customer.timezone`) не встречался среди успешных входов | история входов | 10 |
 | Быстро к операции `login_to_transfer_fast` | от входа до операции меньше 60 с | `authenticated_at`, `requested_at` | 10 |
 
 Пример: злоумышленник с нового устройства через VPN ночью сразу идёт к переводу → 30 + 20 + 10 + 10 =
@@ -196,8 +195,8 @@ confirmation: { timeoutMinutes: 15, onTimeout: block }
 
 - Настроить в организации Андрея (секрет Jev, две автоматизации) и замерить — ждёт «да».
 - Если preflight-скрипты не включены — правила и Jev переезжают в сессию, каждое решение около 10 с.
-- Схема запроса под фазу 1: всё лишнее необязательно, у `recent_login_attempts` предел 50, в
-  `baseline` поле `login_countries`. Согласовать с Андреем.
+- Схема запроса под фазу 1: всё лишнее необязательно, у `recent_login_attempts` предел 50,
+  `history.baseline` убрать. Согласовать с Андреем.
 - Схема `step_up`: каналы только в сессии банка; в запросе поле `step_up_result`. Согласовать с
   Андреем.
 - Название — Nightwatch?
