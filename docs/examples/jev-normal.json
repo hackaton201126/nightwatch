@@ -530,7 +530,7 @@
       }
     },
     "facts": {
-      "device_age_minutes": 881000,
+      "device_age_minutes": 905944,
       "hours_since_password_reset": null,
       "hours_since_mfa_change": null,
       "anonymizer": "none_detected",
@@ -539,7 +539,7 @@
       "login_hour_local": 13,
       "hour_seen_in_successful_logins": true,
       "seconds_login_to_transfer": 180,
-      "successful_logins_in_history": 49,
+      "successful_logins_in_history": 42,
       "thin_history": false
     }
   },

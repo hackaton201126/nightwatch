@@ -539,7 +539,7 @@
       "login_hour_local": 2,
       "hour_seen_in_successful_logins": false,
       "seconds_login_to_transfer": 20,
-      "successful_logins_in_history": 49,
+      "successful_logins_in_history": 45,
       "thin_history": false
     }
   },
