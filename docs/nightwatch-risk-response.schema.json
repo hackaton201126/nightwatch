@@ -48,12 +48,11 @@
     "decided_by": {
       "enum": [
         "fast_path",
-        "rules",
         "jev",
         "devin",
         "fallback"
       ],
-      "description": "fast_path: a small amount within the daily cap, let through before any model, with no strong takeover sign. rules: a threshold or a hard rule decided without a model. jev: the TypeSafe Jev classifier's probability, within the rules' bounds. devin: Devin decided a case Jev was unsure of, within the rules' bounds. fallback: a model did not answer in time or its answer was rejected; the configured fallback decided."
+      "description": "fast_path: a small amount within the daily cap, let through before any model, with no strong takeover sign. jev: the TypeSafe Jev classifier decided by its takeover probability. devin: Devin decided a case Jev was unsure of, contradicted itself on, or did not answer. fallback: Devin did not answer in time; the configured fallback (hold) decided."
     },
     "risk": {
       "type": "object",
@@ -80,7 +79,7 @@
       }
     },
     "classification": {
-      "description": "The classification that decided: Jev's, or Devin's when Jev was unsure. Null when decided_by is fast_path or rules, or when the model failed.",
+      "description": "The classification that decided: Jev's, or Devin's when Jev was escalated. Null on the fast path or when the model failed.",
       "anyOf": [
         {
           "type": "null"
