@@ -42,6 +42,9 @@ interface Parts {
   deviceFirstSeenAt: number;
   network: Net;
   beneficiary: { beneficiary_id: string; is_new: boolean };
+  /** Takeover signs: password reset time and failed logins (ms before the login) on the login's device and network. */
+  passwordResetAt?: number;
+  failuresBeforeLogin?: number[];
 }
 
 export interface CustomerCard {
@@ -165,9 +168,13 @@ export class CustomersService {
         loginBefore: 20 * SECOND,
         amountMinor: profile.jev.amountMinor,
         deviceId: `dev_new_${short}`,
-        deviceFirstSeenAt: transferAt - 2 * MINUTE,
-        network: { ip_ref: `ipr_${short}_jev`, ip_country: profile.homeCountry, anonymizer: profile.jev.anonymizer },
+        deviceFirstSeenAt: transferAt - (profile.jev.takeover ? 20 * SECOND : 0) - 2 * MINUTE,
+        network: { ip_ref: `ipr_${short}_jev`, ip_country: profile.jev.takeover?.country ?? profile.homeCountry, anonymizer: profile.jev.anonymizer },
         beneficiary: { beneficiary_id: newBeneficiary, is_new: true },
+        ...(profile.jev.takeover && {
+          passwordResetAt: transferAt - 20 * SECOND - HOUR,
+          failuresBeforeLogin: [110 * SECOND, 80 * SECOND, 50 * SECOND],
+        }),
       });
     }
     return this.assemble(profile, path, now, {
@@ -217,7 +224,15 @@ export class CustomersService {
     const { transferAt, loginBefore, amountMinor, deviceId, deviceFirstSeenAt, network, beneficiary } = p;
 
     const loginAt = transferAt - loginBefore;
-    const past = this.pastAttempts(profile, now, loginAt, transferAt);
+    const failed: Attempt[] = (p.failuresBeforeLogin ?? []).map((before, i) => ({
+      occurred_at: this.iso(loginAt - before),
+      outcome: 'failure',
+      device_id: deviceId,
+      network: { ...network, ip_ref: `${network.ip_ref}_f${i + 1}` },
+    }));
+    const past = [...failed, ...this.pastAttempts(profile, now, loginAt, transferAt)]
+      .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at))
+      .slice(0, MAX_ATTEMPTS - 1);
     const currentLogin: Attempt = { occurred_at: this.iso(loginAt), outcome: 'success', device_id: deviceId, network };
 
     const outgoing = profile.outgoing.map((o, i) => ({
@@ -262,7 +277,7 @@ export class CustomersService {
         auth_factors: ['password', 'face_id'],
         device_id: deviceId,
         device_first_seen_at: this.iso(deviceFirstSeenAt),
-        last_password_reset_at: null,
+        last_password_reset_at: p.passwordResetAt === undefined ? null : this.iso(p.passwordResetAt),
         last_mfa_change_at: null,
         network,
       },

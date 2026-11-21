@@ -73,7 +73,9 @@ describe('CustomersService', () => {
   it.each(CUSTOMERS.map((c) => c.id))('%s jev: large, device 2 min old, login 20 s before', (id) => {
     const r = build(id, 'jev');
     expect(r.transaction.amount_policy_minor).toBeGreaterThan(1000000);
-    expect(ms(r.as_of) - ms(r.session.device_first_seen_at!)).toBe(120000);
+    // The takeover customer's device is first seen 2 minutes before the login, the others' before the transfer.
+    const from = id === NIGHT_OWL ? ms(r.session.authenticated_at!) : ms(r.as_of);
+    expect(from - ms(r.session.device_first_seen_at!)).toBe(120000);
     expect(ms(r.as_of) - ms(r.session.authenticated_at!)).toBe(20000);
   });
 
@@ -88,7 +90,67 @@ describe('CustomersService', () => {
     const r = build(NIGHT_OWL, 'jev');
     const h = hour(r.session.authenticated_at!);
     expect(successHours(r)).not.toContain(h);
-    expect(past(r).map((a) => a.network?.anonymizer)).not.toContain(r.session.network?.anonymizer);
+    // The failed attempts right before the login come from the login's own network; the earlier history never does.
+    const earlier = past(r).filter((a) => ms(r.session.authenticated_at!) - ms(a.occurred_at) > 30 * 60000);
+    expect(earlier.map((a) => a.network?.anonymizer)).not.toContain(r.session.network?.anonymizer);
+  });
+
+  describe("Dmitry's jev takeover request", () => {
+    const login = (r: RiskRequest) => ms(r.session.authenticated_at!);
+    const recent = (r: RiskRequest) => past(r).filter((a) => login(r) - ms(a.occurred_at) <= 30 * 60000);
+    const earlier = (r: RiskRequest) => past(r).filter((a) => login(r) - ms(a.occurred_at) > 30 * 60000);
+
+    it('passes the schema', () => {
+      expect(riskRequestSchema.safeParse(build(NIGHT_OWL, 'jev')).success).toBe(true);
+    });
+    it('password reset is exactly 1 hour before the login', () => {
+      const r = build(NIGHT_OWL, 'jev');
+      expect(login(r) - ms(r.session.last_password_reset_at!)).toBe(3600000);
+    });
+    it('has exactly 3 failures in the 30 minutes before the login, from its country, not before the device appeared', () => {
+      const r = build(NIGHT_OWL, 'jev');
+      const f = recent(r);
+      expect(f).toHaveLength(3);
+      for (const a of f) {
+        expect(a.outcome).toBe('failure');
+        expect(a.network?.ip_country).toBe(r.session.network?.ip_country);
+        if (a.device_id === r.session.device_id) expect(ms(a.occurred_at)).toBeGreaterThanOrEqual(ms(r.session.device_first_seen_at!));
+      }
+    });
+    it('uses a new device first seen 2 minutes before the login', () => {
+      const r = build(NIGHT_OWL, 'jev');
+      expect(r.session.device_id).not.toBe(svc.find(NIGHT_OWL)!.deviceId);
+      expect(login(r) - ms(r.session.device_first_seen_at!)).toBe(120000);
+    });
+    it('has no VPN and a country absent from the earlier history', () => {
+      const r = build(NIGHT_OWL, 'jev');
+      expect(r.session.network?.anonymizer).toBe('none_detected');
+      expect(earlier(r).map((a) => a.network?.ip_country)).not.toContain(r.session.network?.ip_country);
+    });
+    it('logs in at 14:00 Dubai, an unseen hour, and transfers 20 s later', () => {
+      const r = build(NIGHT_OWL, 'jev');
+      expect(r.session.authenticated_at!.slice(11, 19)).toBe('14:00:00');
+      expect(successHours(r)).not.toContain(14);
+      expect(ms(r.as_of) - login(r)).toBe(20000);
+    });
+    it('is a large amount to a new beneficiary', () => {
+      const r = build(NIGHT_OWL, 'jev');
+      expect(r.transaction.amount_policy_minor).toBeGreaterThan(1000000);
+      expect(r.transaction.beneficiary.is_new_for_customer).toBe(true);
+    });
+    it('keeps the history deterministic, newest first, current login first', async () => {
+      const other = await make();
+      const a = build(NIGHT_OWL, 'jev');
+      const b = other.build(other.find(NIGHT_OWL)!, 'jev', NOW);
+      expect(b.history).toEqual(a.history);
+      expect(b.session.last_password_reset_at).toBe(a.session.last_password_reset_at);
+    });
+  });
+
+  it.each(CUSTOMERS.filter((c) => c.id !== NIGHT_OWL).map((c) => c.id))('%s jev: no takeover extras', (id) => {
+    const r = build(id, 'jev');
+    expect(r.session.last_password_reset_at).toBeNull();
+    expect(r.history.recent_login_attempts.filter((a) => a.outcome === 'failure').length).toBeLessThan(3);
   });
 
   it.each(CUSTOMERS.map((c) => c.id))('%s devin: large, usual device and hour, country never seen', (id) => {

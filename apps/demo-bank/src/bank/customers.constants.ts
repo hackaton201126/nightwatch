@@ -36,7 +36,13 @@ export interface CustomerProfile {
   failures: { daysAgo: number; hour: number }[];
   outgoing: PastTransfer[];
   fast: { hour: number; amountMinor: number; beneficiaryId: string };
-  jev: { hour: number; amountMinor: number; anonymizer: Anonymizer };
+  jev: {
+    hour: number;
+    amountMinor: number;
+    anonymizer: Anonymizer;
+    /** Extra takeover signs: login from a country never seen, a fresh password reset and failed attempts before the login. */
+    takeover?: { country: string };
+  };
   devin: { hour: number; amountMinor: number; country: string };
 }
 
@@ -132,7 +138,7 @@ export const CUSTOMERS: CustomerProfile[] = [
     outgoing: [{ agoMinutes: 400, amountMinor: 80000 }],
     fast: { hour: 23, amountMinor: 95000, beneficiaryId: 'ben_dmitry_delivery' },
     // Night and VPN are normal for him: the unusual signs are a daytime login without VPN.
-    jev: { hour: 14, amountMinor: 6000000, anonymizer: 'none_detected' },
+    jev: { hour: 14, amountMinor: 6000000, anonymizer: 'none_detected', takeover: { country: 'RU' } },
     devin: { hour: 22, amountMinor: 1800000, country: 'KZ' },
   },
 ];
