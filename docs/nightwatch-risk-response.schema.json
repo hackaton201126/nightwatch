@@ -1,5 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Nightwatch Risk Response",
   "description": "The synchronous answer to a Nightwatch Risk Request. The bank executes the transaction only on decision=allow. When final=false the decision is not settled yet (a hold waiting for the owner's confirmation or for the analysis): the final one arrives by webhook and at GET /v1/decisions/{decision_id}.",
   "type": "object",
@@ -9,7 +9,7 @@
     "schema_version": { "const": "1.0" },
     "decision_id": { "type": "string" },
     "transaction_id": { "type": "string", "description": "Echo of transaction.transaction_id of the request." },
-    "decided_at": { "$ref": "#/$defs/timestamp" },
+    "decided_at": { "$ref": "#/definitions/timestamp" },
 
     "decision": {
       "enum": ["allow", "step_up", "hold", "block"],
@@ -20,8 +20,8 @@
       "description": "true: the decision will not change. false: it may still change (always false for hold)."
     },
     "decided_by": {
-      "enum": ["fast_path", "rules", "llm", "fallback"],
-      "description": "fast_path: within the fast-path budget, no further checks. rules: a threshold or a hard rule decided without the model. llm: the model's classification, within the rules' bounds. fallback: the model did not answer in time or its answer was rejected; the configured fallback decided."
+      "enum": ["fast_path", "rules", "jev", "devin", "fallback"],
+      "description": "fast_path (phase 2): within the fast-path budget, no further checks. rules: a threshold or a hard rule decided without a model. jev: the TypeSafe Jev classifier's probability, within the rules' bounds. devin: Devin decided a case Jev was unsure of, within the rules' bounds. fallback: a model did not answer in time or its answer was rejected; the configured fallback decided."
     },
 
     "risk": {
@@ -35,7 +35,7 @@
     },
 
     "classification": {
-      "description": "The model's classification; null when decided_by is fast_path or rules, or when the model failed.",
+      "description": "The classification that decided: Jev's, or Devin's when Jev was unsure. Null when decided_by is fast_path or rules, or when the model failed.",
       "anyOf": [
         { "type": "null" },
         {
@@ -43,6 +43,7 @@
           "additionalProperties": false,
           "required": ["label", "confidence", "recommended_decision"],
           "properties": {
+            "takeover_probability": { "type": "number", "minimum": 0, "maximum": 1, "description": "Jev's probability that someone other than the owner runs the session." },
             "label": { "enum": ["legitimate", "account_takeover", "authorized_push_payment_scam", "structuring", "mule_activity", "other_fraud", "uncertain"] },
             "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
             "recommended_decision": { "enum": ["allow", "step_up", "hold", "block"], "description": "What the model proposed; decision may differ when the rules' bounds overrode it." },
@@ -61,7 +62,7 @@
         "additionalProperties": false,
         "required": ["code", "weight"],
         "properties": {
-          "code": { "$ref": "#/$defs/reason_code" },
+          "code": { "$ref": "#/definitions/reason_code" },
           "weight": { "type": "integer", "minimum": 0, "maximum": 100 },
           "detail": { "type": "string", "maxLength": 200 }
         }
@@ -86,7 +87,7 @@
           "properties": {
             "channel": { "enum": ["in_app", "push", "sms", "call"] },
             "challenge_id": { "type": "string" },
-            "expires_at": { "$ref": "#/$defs/timestamp" }
+            "expires_at": { "$ref": "#/definitions/timestamp" }
           }
         }
       ]
@@ -101,7 +102,7 @@
           "additionalProperties": false,
           "required": ["expires_at", "on_timeout", "confirmation_channel"],
           "properties": {
-            "expires_at": { "$ref": "#/$defs/timestamp" },
+            "expires_at": { "$ref": "#/definitions/timestamp" },
             "on_timeout": { "enum": ["block", "release"] },
             "confirmation_channel": { "enum": ["push", "sms", "call", "trusted_contact", "none"], "description": "The out-of-band channel to the owner: never the session that asked." }
           }
@@ -134,7 +135,7 @@
     "case_id": { "type": ["string", "null"], "description": "The case opened for a hold or a block." },
     "latency_ms": { "type": "integer", "minimum": 0 },
     "model": {
-      "description": "The model that classified; null when it was not asked.",
+      "description": "The last model asked; null when none was asked.",
       "anyOf": [
         { "type": "null" },
         {
@@ -142,7 +143,7 @@
           "additionalProperties": false,
           "required": ["provider"],
           "properties": {
-            "provider": { "enum": ["devin"] },
+            "provider": { "enum": ["typesafe", "devin"] },
             "name": { "type": ["string", "null"] },
             "latency_ms": { "type": "integer", "minimum": 0 },
             "timed_out": { "type": "boolean" }
@@ -155,10 +156,10 @@
   "allOf": [
     { "if": { "properties": { "decision": { "const": "hold" } } }, "then": { "properties": { "final": { "const": false } }, "required": ["hold"] } },
     { "if": { "properties": { "decision": { "const": "step_up" } } }, "then": { "required": ["step_up"] } },
-    { "if": { "properties": { "decided_by": { "const": "llm" } } }, "then": { "required": ["classification", "model"] } }
+    { "if": { "properties": { "decided_by": { "enum": ["jev", "devin"] } } }, "then": { "required": ["classification", "model"] } }
   ],
 
-  "$defs": {
+  "definitions": {
     "timestamp": { "type": "string", "format": "date-time" },
     "reason_code": {
       "enum": [
@@ -173,6 +174,7 @@
         "ip_country_unusual",
         "off_hours",
         "login_to_transfer_fast",
+        "thin_history",
         "amount_vs_baseline",
         "new_foreign_beneficiary",
         "high_risk_country",

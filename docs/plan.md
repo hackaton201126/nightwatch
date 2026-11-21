@@ -1,8 +1,9 @@
 # Nightwatch
 
-**Что.** Сервис на инфраструктуре Devin Cloud. Перед исходящей операцией банк присылает запрос и
-получает `allow`, `step_up`, `hold` или `block`. Как банк отправляет запрос и забирает ответ (webhook,
-опрос API Devin) — за рамками проекта.
+**Что.** Сервис на инфраструктуре Devin Cloud. Перед исходящей операцией бэк-офис банка присылает
+один webhook со всеми данными и получает `allow`, `step_up`, `hold` или `block`. Своей базы нет:
+всё, что нужно для решения, приходит в запросе. Как банк отправляет запрос и забирает ответ — за
+рамками проекта.
 
 **Принцип.** Решаем по поведению и контексту. Пройденные биометрия, KYC и вход — не повод доверять:
 их обманывают дипфейк и украденные данные.
@@ -13,60 +14,91 @@
 
 ```mermaid
 flowchart LR
-  bank[Банк] -->|запрос в webhook автоматизации| s[Сессия Devin по плейбуку]
-  s --> score{Оценка входа: код из репозитория}
-  score -->|меньше 40| allow[allow]
-  score -->|90 и выше| block[block]
-  score -->|40-89| llm[Классификация Devin по знаниям, до classifier.timeoutMs]
-  llm --> out[allow / step_up / hold]
-  allow & block & out --> so[structured output сессии]
-  so -.->|банк опрашивает API Devin| bank
+  bank[Бэк-офис: webhook со всеми данными] --> rules{Правила: оценка входа}
+  rules -->|меньше 40| allow[allow]
+  rules -->|90 и выше| block[block]
+  rules -->|40-89| jev{Jev: вероятность захвата, до 2 с}
+  jev -->|уверена| d1[allow / step_up / hold]
+  jev -->|не уверена 0,4-0,6| devin[Devin думает, до 1 мин]
+  devin --> d2[step_up / hold]
 ```
 
-1. Автоматизация с webhook-триггером принимает запрос: тело уходит в промпт сессии (до 200 КБ).
-   Одна автоматизация на банк, секрет триггера — ключ банка.
-2. Сессия по плейбуку проверяет запрос по [схеме](nightwatch-risk-request.schema.json), запускает
-   оценку (детерминированный код из репозитория) и сразу пишет решение правил в structured output.
-3. Серая зона (40–89): классификация по знаниям, structured output переписывается
-   (`decided_by: llm`). Не успела за `classifier.timeoutMs` (по умолчанию 60 000 мс) — остаётся
-   запасное решение (`decided_by: fallback`).
-4. `hold`: сессия ждёт ответа владельца сообщением в сессию до 15 мин, по таймауту `block`. Итог — тот
-   же structured output с `final: true`.
-5. Разбор дела для `hold` и `block` — та же сессия после решения, в `explanation.analyst`.
+Всё идёт в одной сессии Devin, запущенной webhook-автоматизацией. Каждый шаг сразу переписывает
+structured output сессии, банк видит последнее решение: правила — за миллисекунды, Jev — за 0,1–1 с,
+Devin — только в неуверенных случаях.
+
+## Вход: один webhook
+
+| Блок | Поля | Предел |
+|---|---|---|
+| `transaction` | `transaction_id`, `requested_at`, `amount`, `channel` | — |
+| `customer` | `customer_id` (псевдоним), `timezone` | — |
+| `session` | `authenticated_at`, `auth_factors`, `device_id`, `device_first_seen_at`, `last_password_reset_at`, `last_mfa_change_at`, `network {ip_ref, ip_country, anonymizer}` | — |
+| `history.recent_login_attempts` | `occurred_at`, `outcome`, `device_id`, `network` | последние 50 за 30 дней, новые первыми |
+| `history.baseline` (необязательно) | `typical_active_local_hours`, `login_countries`, `lookback_days` | стран до 10, окно до 90 дней |
+
+- **Тело до 32 КБ**, обычно около 8 КБ (50 входов по ~150 Б). Почему: webhook Devin режет тело на
+  200 КБ, Jev принимает до ~32 000 токенов на вопрос, маленький промпт быстрее.
+- **Сверх предела** (больше 50 входов, старше 30 дней) — отбрасываем, берём самые новые.
+- **Меньше 5 успешных входов** и нет `baseline` — «необычную страну» и «необычный час» не считаем;
+  Jev и Devin видят флаг `thin_history`.
+- **Без персональных данных:** IP — только `ip_ref` (хэш) и страна; имя, телефон, номера счетов не
+  нужны.
+- **Не нужно в фазе 1:** `policy.fast_path_budget`, `recent_outgoing_requests`, `windows`, получатель,
+  баланс.
 
 ## Фаза 1: аномалии входа
 
-Сегодня распознаём только странный вход: кто и откуда вошёл в сессию, из которой идёт операция. Сумма,
-получатель и частота операций — фаза 2. Все поля уже есть в
-[схеме запроса](nightwatch-risk-request.schema.json).
-
-| Сигнал, код причины | Условие | Поле запроса | Вес |
+| Сигнал, код причины | Условие | Откуда | Вес |
 |---|---|---|---|
 | Новое устройство `new_device` | впервые меньше 24 ч назад | `session.device_first_seen_at` | 30 |
+| Сброс доступа `recent_password_reset`, `recent_mfa_change` | пароль или MFA сменены меньше 24 ч назад | `session.last_*_at` | 25 |
 | Анонимайзер `anonymizer_network` | VPN, Tor, прокси | `session.network.anonymizer` | 20 |
-| Необычная страна `ip_country_unusual` | страна IP не встречалась в успешных входах клиента | `session.network.ip_country`, `history.recent_login_attempts` | 20 |
-| Сброс доступа `recent_password_reset`, `recent_mfa_change` | пароль или MFA сменены меньше 24 ч назад | `session.last_password_reset_at`, `session.last_mfa_change_at` | 25 |
-| Неудачные входы `failed_login_attempts` | 3+ неудачные попытки за 1 ч до входа | `history.recent_login_attempts` | 15 |
-| Необычный час `off_hours` | вход вне обычных часов клиента | `session.authenticated_at`, `history.baseline.typical_active_local_hours` | 10 |
-| Быстро к операции `login_to_transfer_fast` | от входа до операции меньше 60 с | `session.authenticated_at`, `transaction.requested_at` | 10 |
+| Необычная страна `ip_country_unusual` | страны нет среди успешных входов | `baseline.login_countries` или история | 20 |
+| Неудачные входы `failed_login_attempts` | 3+ неудачные попытки за 1 ч до входа | история | 15 |
+| Необычный час `off_hours` | вход вне обычных часов клиента | `baseline.typical_active_local_hours` или история | 10 |
+| Быстро к операции `login_to_transfer_fast` | от входа до операции меньше 60 с | `authenticated_at`, `requested_at` | 10 |
 
 Пример: злоумышленник с нового устройства через VPN ночью сразу идёт к переводу → 30 + 20 + 10 + 10 =
-70 → `hold`. Плюс чужая страна → 90 → `block`. Alice со своего телефона днём → 0 → `allow`.
+70. Плюс чужая страна → 90 → `block`. Alice со своего телефона днём → 0 → `allow`.
 
-## Оценка → решение
+## Решение
 
-| Оценка | Решение | Кто решает |
-|---|---|---|
-| меньше 40 | `allow` | правила |
-| 40–59 | `step_up` | LLM в границах правил |
-| 60–89 | `hold` | LLM в границах правил (не ниже `step_up`) |
-| 90 и выше | `block` | правила |
+| Оценка правил | Что дальше |
+|---|---|
+| меньше 40 | `allow`, правила |
+| 40–89 | Jev |
+| 90 и выше | `block`, правила |
 
-- **Ответ LLM проверяется:** значения только из списков, коды причин только из сигналов.
+| Вероятность захвата от Jev | Решение |
+|---|---|
+| меньше 0,2 | `allow`; при оценке 60–89 — `step_up` |
+| 0,2–0,4 | `step_up` |
+| 0,4–0,6 | Jev не уверена → Devin: `step_up` или `hold` |
+| 0,6 и выше | `hold` |
+
+- **Jev не ответила за 2 с** → по оценке: 40–59 `step_up`, 60–89 `hold`. **Devin не ответил за
+  1 мин** → `hold`.
+- **Модели не выходят за правила:** Jev и Devin не дают `block` и не отпускают оценку 60–89 без
+  проверки. `block` — правила или владелец.
 - **`step_up`** — ещё одно подтверждение в текущей сессии банка (экран с предупреждением, биометрия,
-  PIN, код). Для среднего риска.
+  PIN, код).
 - **`hold`** — перевод остановлен, владельца спрашиваем вне сессии банка: звонок, пуш на старое
   устройство. Срок 15 мин, по таймауту `block`. Пока ждём — `final: false`.
+
+## Jev и Devin
+
+| | Jev (TypeSafe) | Devin |
+|---|---|---|
+| Роль | быстрый классификатор | агент: думает, объясняет, ищет схемы |
+| Когда | каждая операция с оценкой 40–89 | после Jev: неуверенные случаи; разбор `hold` и `block`; раз в час — поиск схем |
+| Вход | запрос + сработавшие сигналы и оценка | то же + ответ Jev |
+| Выход | вероятность захвата (да/нет) и метка (выбор), без текста | решение в неуверенной зоне, объяснение для клиента и аналитика, разбор дела, PR в конфигурацию |
+| Время | 0,1–1 с, срок 2 с | десятки секунд, срок 1 мин |
+| Цена | $0,042 за 1 млн входных токенов — практически ноль | сессия Devin |
+
+Jev вызывает наш код в сессии (`POST https://api.typesafe.ai/v1/systemone`, ключ в секретах Devin).
+Тексты объяснений пишет Devin: Jev их не даёт.
 
 ## Фаза 2 (после хакатона)
 
@@ -81,23 +113,24 @@ flowchart LR
 | Devin | У нас |
 |---|---|
 | Автоматизация с webhook-триггером | приём запроса; одна на банк |
-| Плейбук | порядок решения: схема → оценка → классификация → structured output |
-| Сессия и structured output (схема до 64 КБ, Draft 7) | одно решение; схема — [ответ](nightwatch-risk-response.schema.json) |
+| Плейбук | порядок: схема → правила → Jev → Devin → structured output |
+| Сессия и structured output (Draft 7, до 64 КБ) | одно решение; схема — [ответ](nightwatch-risk-response.schema.json) |
 | Знания (knowledge) | сигналы, пороги, признаки захвата аккаунта |
-| Репозиторий | код оценки (TypeScript), конфигурация банков `config/<bank>.yaml` |
-| Секреты | ключ Devin API для поиска схем |
+| Репозиторий | код правил и вызова Jev (TypeScript), конфигурация банков `config/<bank>.yaml` |
+| Секреты | ключ TypeSafe, ключ Devin API для поиска схем |
 | Автоматизация по расписанию, раз в час | поиск схем по решениям за час → PR в конфигурацию с цифрами: сколько поймали бы, сколько честных задели бы |
 | Devin App | консоль: решения и дела (приватная, вход через Devin) |
 
 ## Конфигурация (на банк, `config/<bank>.yaml`)
 
 ```yaml
-loginSignals: { newDevice: 30, anonymizer: 20, unusualCountry: 20, accessReset: 25, failedLogins: 15, unusualHour: 10, fastToTransaction: 10 }
+input: { maxLoginAttempts: 50, loginLookbackDays: 30, maxBodyKb: 32, minSuccessfulLogins: 5 }
+loginSignals: { newDevice: 30, accessReset: 25, anonymizer: 20, unusualCountry: 20, failedLogins: 15, unusualHour: 10, fastToTransaction: 10 }
 loginWindows: { newDeviceHours: 24, accessResetHours: 24, failedLoginsHour: 3, fastToTransactionSeconds: 60 }
-decisions: { stepUp: 40, hold: 60, block: 90 }
-classifier: { timeoutMs: 60000, fallback: { stepUp: step_up, hold: hold } }   # срок классификации, по умолчанию 1 мин
+decisions: { jev: 40, block: 90 }
+jev: { model: jev-latest, timeoutMs: 2000, thresholds: { stepUp: 0.2, devin: 0.4, hold: 0.6 } }
+devin: { timeoutMs: 60000, playbook: nightwatch-decision, patternScan: hourly }   # срок Devin, по умолчанию 1 мин
 confirmation: { timeoutMinutes: 15, onTimeout: block }
-devin: { automation: nightwatch-decide-<bank>, playbook: nightwatch-decision, patternScan: hourly }
 ```
 
 Ключи — в секретах Devin, не в файле.
@@ -106,25 +139,26 @@ devin: { automation: nightwatch-decide-<bank>, playbook: nightwatch-decision, pa
 
 1. Alice входит со своего телефона днём и платит → `allow` по правилам.
 2. 02:00: злоумышленник прошёл FaceID и KYC от имени Alice — новое устройство, VPN, сразу к переводу.
-3. Перевод AED 450 000 → сессия Devin: оценка 70 → классификация «захват аккаунта» → `hold`.
+3. Перевод AED 450 000 → оценка 70 → Jev: захват 0,92 → `hold` за секунду.
 4. «Телефон Alice»: «Это вы?» → «Нет» → `block`, деньги на месте.
-5. Консоль (Devin App): сигналы входа и разбор Devin.
-6. Поиск схем раз в час: PR с правкой порогов и цифрами.
+5. Неоднозначный вход (оценка 45, Jev 0,5) → Devin разбирает и объясняет → `step_up`.
+6. Консоль (Devin App): сигналы, ответ Jev, разбор Devin. Поиск схем: PR с правкой порогов.
 
 ## Состав
 
-- **Репозиторий:** оценка входа (TypeScript, запуск из сессии), схемы, `config/`, плейбук и знания в
-  `devin/`, скрипт, который создаёт автоматизации, плейбук и знания через API v3.
-- **Демо-банк:** скрипт или страница — шлёт запрос в webhook и опрашивает сессию. Только для показа.
+- **Репозиторий:** правила и вызов Jev (TypeScript, запуск из сессии), схемы, `config/`, плейбук и
+  знания в `devin/`, скрипт, который создаёт автоматизации, плейбук и знания через API v3.
+- **Демо-банк:** скрипт или страница — шлёт webhook и опрашивает сессию. Только для показа.
 - **Консоль:** Devin App.
 
-## Ограничения Devin Cloud
+## Ограничения
 
-- **Тариф.** Бесплатный облачные сессии не запускает: проверено, `out_of_quota`. Облако — с Pro
+- **Devin: тариф.** Бесплатный облачные сессии не запускает: проверено, `out_of_quota`. Облако — с Pro
   ($20/мес); есть ли на Pro API и автоматизации — не видно на странице цен.
-- **Каждое решение — сессия Devin.** Время старта и цена сессии не измерены — первое, что меряем.
-- **Автоматизации:** 50 запусков в час на старте, очередь настраивается.
-- **Devin App** засыпает через 5 мин без запросов, только для вошедших в Devin.
+- **Devin: каждое решение — сессия.** Время старта и цена сессии не измерены — меряем первым.
+- **Devin: автоматизации** — 50 запусков в час на старте, очередь настраивается.
+- **Jev: доступ.** TypeSafe с 22 сентября не регистрирует новые аккаунты; Jev есть в Vercel AI Gateway
+  (`typesafe-ai/jev`).
 
 ## Сроки
 
@@ -132,10 +166,10 @@ devin: { automation: nightwatch-decide-<bank>, playbook: nightwatch-decision, pa
 
 ## Открыто
 
-- Доступ к облаку: Pro за $20 или кредиты у Cognition на площадке.
-- Схема ответа сейчас Draft 2020-12, для structured output нужна Draft 7.
+- Доступ к Devin Cloud: Pro за $20 или кредиты у Cognition на площадке.
+- Ключ Jev: есть ли у кого-то аккаунт TypeSafe, или идём через Vercel AI Gateway.
+- Схема запроса под фазу 1: всё лишнее необязательно, у `recent_login_attempts` предел 50, в
+  `baseline` поле `login_countries`. Согласовать с Андреем.
+- Схема `step_up`: каналы только в сессии банка; в запросе поле `step_up_result`. Согласовать с
+  Андреем.
 - Название — Nightwatch?
-- Схема `step_up`: каналы только в сессии банка (экран, биометрия, PIN, код); в запросе поле
-  `step_up_result`. Согласовать с Андреем.
-- Запрос требует `policy.fast_path_budget` и историю исходящих операций — в фазе 1 не нужны. Сделать
-  необязательными? Согласовать с Андреем. В ответе `fast_path_budget` уже необязателен.
