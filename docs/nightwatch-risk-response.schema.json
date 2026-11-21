@@ -118,10 +118,7 @@
                 "hold",
                 "block"
               ],
-              "description": "What the model proposed; decision may differ when the rules' bounds overrode it."
-            },
-            "overridden_by_rules": {
-              "type": "boolean"
+              "description": "The decision this classification maps to: Jev's by the configured probability thresholds, Devin's as it answered."
             }
           }
         }
