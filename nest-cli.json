@@ -2,17 +2,10 @@
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
   "monorepo": true,
-  "root": "apps/nightwatch",
-  "sourceRoot": "apps/nightwatch/src",
+  "root": "apps/demo-bank",
+  "sourceRoot": "apps/demo-bank/src",
   "compilerOptions": { "deleteOutDir": false },
   "projects": {
-    "nightwatch": {
-      "type": "application",
-      "root": "apps/nightwatch",
-      "entryFile": "main",
-      "sourceRoot": "apps/nightwatch/src",
-      "compilerOptions": { "tsConfigPath": "apps/nightwatch/tsconfig.app.json" }
-    },
     "demo-bank": {
       "type": "application",
       "root": "apps/demo-bank",

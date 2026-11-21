@@ -3,15 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "rm -rf dist && nest build nightwatch && nest build demo-bank",
+    "build": "rm -rf dist && nest build demo-bank",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:unit && npm run test:e2e && npm run test:preflight",
-    "test:preflight": "python3 -W ignore -m unittest discover -s preflight",
+    "test": "npm run test:unit && npm run test:e2e",
     "lint": "eslint .",
-    "start": "node dist/apps/nightwatch/apps/nightwatch/src/main.js",
+    "start": "node dist/apps/demo-bank/apps/demo-bank/src/main.js",
     "test:unit": "jest --runInBand --testRegex '.*\\.spec\\.ts$' --roots apps libs",
-    "test:e2e": "jest --runInBand --testRegex '.*\\.e2e-spec\\.ts$' --roots apps",
-    "start:demo-bank": "node dist/apps/demo-bank/apps/demo-bank/src/main.js"
+    "test:e2e": "jest --runInBand --testRegex '.*\\.e2e-spec\\.ts$' --roots apps"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
