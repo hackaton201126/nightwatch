@@ -21,7 +21,7 @@
     },
     "decided_by": {
       "enum": ["fast_path", "rules", "jev", "devin", "fallback"],
-      "description": "fast_path: a shortcut let it through before the rules (small amount within the daily cap, own account, long-known beneficiary, old standing order) with no strong takeover sign. rules: a threshold or a hard rule decided without a model. jev: the TypeSafe Jev classifier's probability, within the rules' bounds. devin: Devin decided a case Jev was unsure of, within the rules' bounds. fallback: a model did not answer in time or its answer was rejected; the configured fallback decided."
+      "description": "fast_path: a small amount within the daily cap, let through before any model, with no strong takeover sign. rules: a threshold or a hard rule decided without a model. jev: the TypeSafe Jev classifier's probability, within the rules' bounds. devin: Devin decided a case Jev was unsure of, within the rules' bounds. fallback: a model did not answer in time or its answer was rejected; the configured fallback decided."
     },
 
     "risk": {
@@ -164,9 +164,6 @@
     "reason_code": {
       "enum": [
         "small_amount",
-        "own_account",
-        "trusted_beneficiary",
-        "standing_order",
         "fast_path_budget_exhausted",
         "amount_above_fast_path_single",
         "new_device",

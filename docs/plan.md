@@ -42,8 +42,7 @@ flowchart LR
 
 | Блок | Поля | Предел |
 |---|---|---|
-| `transaction` | `transaction_id`, `requested_at`, `amount`, `amount_policy_minor` (в AED), `channel`, `standing_order_created_at` | — |
-| `transaction.beneficiary` | `beneficiary_id`, `own_account`, `first_paid_at` | — |
+| `transaction` | `transaction_id`, `requested_at`, `amount`, `amount_policy_minor` (в валюте `policy.currency`, AED), `channel` | — |
 | `customer` | `customer_id` (псевдоним), `timezone` | — |
 | `session` | `authenticated_at`, `auth_factors`, `device_id`, `device_first_seen_at`, `last_password_reset_at`, `last_mfa_change_at`, `network {ip_ref, ip_country, anonymizer}` | — |
 | `history.recent_login_attempts` | `occurred_at`, `outcome`, `device_id`, `network` | последние 50 за 30 дней, новые первыми |
@@ -62,15 +61,12 @@ flowchart LR
 
 ## Сразу пропускаем
 
-До Jev, без моделей. Любое правило ниже → `allow` (`decided_by: fast_path`) за
-миллисекунды, без Jev и Devin.
+До Jev, без моделей, только по полям текущей [схемы запроса](nightwatch-risk-request.schema.json).
+Сработало → `allow` (`decided_by: fast_path`, код `small_amount`) за миллисекунды, без Jev и Devin.
 
-| Правило, код причины | Условие |
-|---|---|
-| Мелкая сумма `small_amount` | меньше AED 10 000, и за 24 ч вместе с этой операцией не больше AED 20 000 и 5 операций |
-| Свой счёт `own_account` | перевод между счетами самого клиента: деньги не уходят |
-| Давний получатель `trusted_beneficiary` | первый платёж ему больше 30 дней назад: захватчику платёж знакомому получателю не выгоден |
-| Старое автосписание `standing_order` | регулярный платёж создан больше 7 дней назад, не в этой сессии |
+| Правило | Условие | Поля |
+|---|---|---|
+| Мелкая сумма | меньше AED 10 000, и за 24 ч вместе с этой операцией не больше AED 20 000 и 5 операций | `transaction.amount_policy_minor`, `history.windows.24h` |
 
 **Но не пропускаем, если есть хоть один сильный признак захвата** — тогда сразу к Jev:
 - новое устройство (впервые меньше 24 ч назад);
@@ -151,6 +147,8 @@ Jev вызывает preflight-скрипт (`POST https://api.typesafe.ai/v1/sy
 
 - **Бюджет без проверки по окнам:** 6 ч и 24 ч, в рискованном контексте ×0,1 (в фазе 1 — только
   дневной предел мелких сумм).
+- **Ещё быстрые пропуски** (нужны новые поля в запросе): свой счёт, получатель с первым платежом
+  больше 30 дней назад, автосписание старше 7 дней.
 - **Сигналы операции:** сумма от 3× обычной, новый получатель за границей, всплеск, доля баланса,
   дробление, веер, дневной объём, мул.
 - **Поиск схем по потоку** (Devin) с предложениями в конфигурацию.
@@ -182,7 +180,7 @@ Automations → Create automation:
 
 ```yaml
 input: { maxLoginAttempts: 50, loginLookbackDays: 30, maxBodyKb: 32, minSuccessfulLogins: 5 }
-fastAllow: { maxAmount: 10000, daily: { maxTotal: 20000, maxCount: 5 }, ownAccount: true, trustedBeneficiaryDays: 30, standingOrderDays: 7 }   # AED
+fastAllow: { maxAmount: 10000, daily: { maxTotal: 20000, maxCount: 5 } }   # AED, в запросе — в филсах (×100)
 fastAllowStoppers: { newDeviceHours: 24, accessResetHours: 24, tor: true, failedLoginsHour: 3 }
 facts: { failedLoginsWindowMinutes: 60 }
 jev: { model: jev-latest, timeoutMs: 2000, thresholds: { stepUp: 0.2, hold: 0.6 } }
@@ -197,8 +195,8 @@ confirmation: { timeoutMinutes: 15, onTimeout: block }
 
 ## Демо (5 мин)
 
-1. Alice платит AED 85 за ужин → `allow` сразу, мелкая сумма; потом AED 15 000 арендодателю →
-   `allow` сразу, давний получатель.
+1. Alice платит AED 85 за ужин → `allow` сразу, мелкая сумма. Потом AED 15 000 арендодателю со своего
+   телефона → Jev: захват 0,04 → `allow` за 0,3 с.
 2. 02:00: злоумышленник прошёл FaceID и KYC от имени Alice — новое устройство, VPN, сразу к переводу.
 3. Перевод AED 450 000 → preflight: Jev — захват 0,80, метка «захват» 0,86 → `hold` за секунду, без
    сессии Devin.
@@ -234,8 +232,7 @@ confirmation: { timeoutMinutes: 15, onTimeout: block }
 
 - Настроить в организации Андрея (секрет Jev, две автоматизации) и замерить — ждёт «да».
 - Если preflight-скрипты не включены — быстрый пропуск, факты и Jev переезжают в сессию, каждое решение около 10 с.
-- Схема запроса под фазу 1: всё лишнее необязательно, у `recent_login_attempts` предел 50, новые поля
-  `beneficiary.own_account`, `beneficiary.first_paid_at`, `standing_order_created_at`,
+- Схема запроса под фазу 1: всё лишнее необязательно, у `recent_login_attempts` предел 50, 
   `history.baseline` убрать. Согласовать с Андреем.
 - Схема `step_up`: каналы только в сессии банка; в запросе поле `step_up_result`. Согласовать с
   Андреем.
