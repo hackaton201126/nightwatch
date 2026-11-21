@@ -136,3 +136,7 @@ export const CUSTOMERS: CustomerProfile[] = [
     devin: { hour: 22, amountMinor: 1800000, country: 'KZ' },
   },
 ];
+
+export const FORM_COUNTRIES = ['GB', 'TR', 'GE', 'IN', 'KZ', 'RU', 'US'] as const;
+
+export const CUSTOM_LABEL = 'Своя транзакция';

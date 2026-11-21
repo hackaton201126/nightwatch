@@ -2,14 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { riskRequestSchema } from '@app/contracts';
 import { DemoBankConfigService, WebhookSettings } from '../config/demo-bank-config.service';
 import { CustomerProfile, PathId } from './customers.constants';
-import { CustomersService } from './customers.service';
+import { CustomChoices, CustomersService } from './customers.service';
 
 export const MAX_SENDS = 20;
 
 export interface SendOutcome {
   customerId: string;
   customerName: string;
-  path: PathId;
+  path: PathId | 'custom';
   transactionId: string;
   accepted: boolean;
   /** Webhook HTTP status, or an error text when it was unreachable. */
@@ -31,9 +31,18 @@ export class TransactionSenderService {
   }
 
   async send(customer: CustomerProfile, path: PathId): Promise<SendOutcome> {
-    const { url, secret } = this.config.webhook() as WebhookSettings;
     const now = new Date();
-    const body = riskRequestSchema.parse(this.customers.build(customer, path, now));
+    return this.post(customer, path, this.customers.build(customer, path, now), now);
+  }
+
+  async sendCustom(customer: CustomerProfile, choices: CustomChoices): Promise<SendOutcome> {
+    const now = new Date();
+    return this.post(customer, 'custom', this.customers.buildCustom(customer, choices, now), now);
+  }
+
+  private async post(customer: CustomerProfile, path: PathId | 'custom', request: unknown, now: Date): Promise<SendOutcome> {
+    const { url, secret } = this.config.webhook() as WebhookSettings;
+    const body = riskRequestSchema.parse(request);
     const outcome: SendOutcome = {
       customerId: customer.id,
       customerName: customer.name,
