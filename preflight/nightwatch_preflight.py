@@ -2,8 +2,8 @@
 """Nightwatch preflight for a Devin automation: Python 3, standard library only, one file.
 
 Reads the trigger event from $EVENT_FILE, decides the bank's webhook (small-amount shortcut, then
-Jev) and writes exactly one decision to $OUTPUT_FILE. A clear case is POSTed to the bank and the
-output is {"run": false, ...}; an unsure one becomes one item for a Devin session. Always exits 0.
+Jev, then, when Jev is unsure, a Devin model session asked through the Devin API for a verdict) and
+POSTs the decision to the bank. The output is always {"run": false, ...}. Always exits 0.
 Port of the TypeScript core in src/decision.
 """
 import json
@@ -27,6 +27,7 @@ CONFIG = {
     "jev": {"model": "jev-latest", "timeout_s": 2.0, "thresholds": {"step_up": 0.2, "hold": 0.6}},
     "escalate": {"min_label_confidence": 0.5},
     "confirmation": {"timeout_minutes": 15},
+    "devin": {"timeout_s": 60, "poll_s": 2.0, "request_timeout_s": 5.0},
     "bank_post_timeout_s": 4.0,
 }
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
@@ -422,16 +423,218 @@ def load_body(event):
     return body, None
 
 
-def escalate_item(body, facts, reply_url, jev):
-    tx_id = get(body, "transaction", "transaction_id")
+REASON_CODES = ("new_device", "recent_password_reset", "recent_mfa_change", "failed_login_attempts",
+                "anonymizer_network", "ip_country_unusual", "off_hours", "login_to_transfer_fast",
+                "thin_history", "model_assessment")
+VERDICT_DECISIONS = ("allow", "step_up", "hold")
+VERDICT_SCHEMA = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["decision", "label", "confidence", "takeover_probability", "reasons",
+                 "customer_explanation", "analyst_explanation"],
+    "properties": {
+        "decision": {"enum": list(VERDICT_DECISIONS)},
+        "label": {"enum": list(LABELS)},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "takeover_probability": {"type": "number", "minimum": 0, "maximum": 1},
+        "reasons": {"type": "array", "maxItems": 10, "uniqueItems": True, "items": {"enum": list(REASON_CODES)}},
+        "customer_explanation": {"type": "string", "maxLength": 300},
+        "analyst_explanation": {"type": "string", "maxLength": 800},
+    },
+}
+
+PROMPT_TEMPLATE = """You are Nightwatch's second line. A bank asked whether to execute an outgoing transfer. \
+The fast classifier (TypeSafe Jev) could not decide it, so the case is yours.
+
+Judge one question: is this session run by someone other than the account owner? Compare the current \
+login (`request.session`) with the owner's login history (`request.history.recent_login_attempts`), using \
+the precomputed `facts`. Passed biometrics, KYC or login prove nothing: deepfakes and stolen credentials pass them.
+
+Signs of takeover: a device first seen minutes ago, a password or MFA change in the last day, Tor or VPN when \
+the owner never used one, a country or an hour the owner never logs in from, failed attempts right before the \
+login, a transfer seconds after the login.
+Signs of the owner: a known device, the usual country and hours, no recent access changes.
+With little history (`thin_history`), lean towards step_up.
+
+Answer exactly one decision: allow (the owner, clearly), step_up (probably the owner, confirm in the current \
+session) or hold (likely not the owner: stop the transfer, ask the owner out of band). Never answer block.
+
+Answer only through structured output, following its schema; use only the allowed reason codes. Do not open \
+repositories, run code or browse.
+
+The bank's request:
+{request}
+
+The facts computed from it:
+{facts}
+
+Jev's answer (or why it failed):
+{jev}
+"""
+
+
+def build_prompt(request, facts, jev):
+    dump = lambda v: json.dumps(v, indent=2, ensure_ascii=False)  # noqa: E731
+    return PROMPT_TEMPLATE.format(request=dump(request), facts=dump(facts), jev=dump(jev))
+
+
+def http_call(method, url, headers, timeout, body=None):
+    """One JSON request; returns (status, parsed_json_or_None). Raises on connection errors."""
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    hdrs = dict(headers)
+    if data is not None:
+        hdrs["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=hdrs)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as res:
+            raw, status = res.read(), res.status
+    except urllib.error.HTTPError as e:
+        return e.code, None
+    try:
+        return status, json.loads(raw)
+    except ValueError:
+        return status, None
+
+
+def validate_verdict(v):
+    """Returns an error text, or None when the verdict is valid."""
+    if not isinstance(v, dict):
+        return "verdict is not an object"
+    if set(v) != set(VERDICT_SCHEMA["required"]):
+        return "verdict fields differ from the schema"
+    if v["decision"] not in VERDICT_DECISIONS:
+        return "unknown decision %r" % (v["decision"],)
+    if v["label"] not in LABELS:
+        return "unknown label %r" % (v["label"],)
+    if not is_unit(v["confidence"]) or not is_unit(v["takeover_probability"]):
+        return "confidence or takeover_probability out of range"
+    r = v["reasons"]
+    if not isinstance(r, list) or len(r) > 10 or len(set(map(str, r))) != len(r):
+        return "reasons is not a short list of distinct codes"
+    for code in r:
+        if code not in REASON_CODES:
+            return "unknown reason code %r" % (code,)
+    for key, limit in (("customer_explanation", 300), ("analyst_explanation", 800)):
+        if not isinstance(v[key], str) or len(v[key]) > limit:
+            return "%s is not a string of at most %d characters" % (key, limit)
+    return None
+
+
+def ask_devin(request, facts, jev, config, env):
+    """Asks a Devin session for a verdict. Returns {"ok": True, verdict} or {"ok": False, error}.
+    The session is deleted once it exists, whatever happened."""
+    key, org = env.get("DEVIN_API_KEY"), env.get("DEVIN_ORG_ID")
+    if not key or not org:
+        return {"ok": False, "error": "DEVIN_API_KEY or DEVIN_ORG_ID is not set"}
+    base = "%s/v3/organizations/%s/sessions" % ((env.get("DEVIN_API_URL") or "https://api.devin.ai").rstrip("/"), org)
+    headers = {"Authorization": "Bearer " + key}
+    try:
+        limit = float(env.get("NIGHTWATCH_DEVIN_TIMEOUT_S") or config["devin"]["timeout_s"])
+        poll = float(env.get("NIGHTWATCH_DEVIN_POLL_S") or config["devin"]["poll_s"])
+    except ValueError:
+        return {"ok": False, "error": "bad Devin timeout setting"}
+    deadline = time.monotonic() + limit
+
+    def left():
+        return max(0.5, min(config["devin"]["request_timeout_s"], deadline - time.monotonic()))
+
+    tx_id = get(request, "transaction", "transaction_id")
     tx_id = tx_id if isinstance(tx_id, str) else ""
-    return {"items": [{
-        "id": tx_id,
-        "title": "Nightwatch: decide %s" % tx_id,
-        "facts": facts,
-        "jev": jev,
-        "reply_url": reply_url,
-    }]}
+    session_id = None
+    try:
+        status, out = http_call("POST", base, headers, left(), {
+            "prompt": build_prompt(request, facts, jev),
+            "title": "Nightwatch: decide %s" % tx_id,
+            "tags": ["nightwatch", tx_id],
+            "structured_output_schema": VERDICT_SCHEMA,
+            "structured_output_required": True,
+            "devin_mode": "fast",
+            "max_acu_limit": 1,
+            "resumable": False,
+            "memory_enabled": False,
+        })
+        session_id = get(out, "session_id")
+        if not 200 <= status < 300 or not isinstance(session_id, str) or not session_id:
+            session_id = session_id if isinstance(session_id, str) and session_id else None
+            return {"ok": False, "error": "Devin refused to create a session (HTTP %d)" % status}
+        while True:
+            time.sleep(min(poll, max(0.0, deadline - time.monotonic())))
+            try:
+                status, out = http_call("GET", "%s/%s" % (base, session_id), headers, left())
+            except Exception as e:  # noqa: BLE001 - a failed poll is retried until the deadline
+                status, out = 0, None
+                last = "%s: %s" % (type(e).__name__, e)
+            else:
+                last = "HTTP %d" % status
+            if 200 <= status < 300 and get(out, "structured_output") is not None:
+                verdict = out["structured_output"]
+                problem = validate_verdict(verdict)
+                return {"ok": False, "error": "invalid verdict: " + problem} if problem else {"ok": True, "verdict": verdict}
+            if time.monotonic() >= deadline:
+                return {"ok": False, "timed_out": True,
+                        "error": "Devin gave no verdict within %g s (last poll: %s)" % (limit, last)}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": "Devin API error: %s: %s" % (type(e).__name__, e)}
+    finally:
+        if session_id:
+            try:
+                http_call("DELETE", "%s/%s" % (base, session_id), headers, 5)
+            except Exception:  # noqa: BLE001 - nothing more to do about a failed stop
+                pass
+
+
+def decide_by_devin(request, facts, jev, config, now, decision_id, env):
+    """Always returns a full response: Devin's verdict by rules, or a fallback hold."""
+    started = time.monotonic()
+    answer = ask_devin(request, facts, jev, config, env)
+    latency = max(0, int((time.monotonic() - started) * 1000))
+    tx_id = get(request, "transaction", "transaction_id")
+    expires_dt = now + timedelta(minutes=config["confirmation"]["timeout_minutes"])
+    hold_info = {"expires_at": iso(expires_dt), "on_timeout": "block", "confirmation_channel": "push"}
+    model = {"provider": "devin", "latency_ms": latency, "timed_out": bool(answer.get("timed_out"))}
+    base = {
+        "schema_version": "1.0",
+        "decision_id": decision_id,
+        "transaction_id": tx_id if isinstance(tx_id, str) else "",
+        "decided_at": iso(now),
+        "latency_ms": latency,
+        "model": model,
+    }
+    if not answer["ok"]:
+        jev_note = ""
+        if isinstance(jev, dict) and jev.get("escalation_reason"):
+            jev_note = " Escalated because: %s." % jev["escalation_reason"]
+        return {**base, "decision": "hold", "final": False, "decided_by": "fallback",
+                "risk": {"score": 0, "level": "high"}, "classification": None, "reasons": [],
+                "actions": ["hold_transaction", "notify_owner_out_of_band"],
+                "hold": hold_info,
+                "explanation": {
+                    "customer": "For your safety this transfer is on hold. We will ask you to confirm it on your registered device.",
+                    "analyst": ("Fallback hold: the Devin check failed. %s.%s" % (answer["error"], jev_note))[:800]}}
+    v = answer["verdict"]
+    decision, p = v["decision"], v["takeover_probability"]
+    score = int(math.floor(p * 100 + 0.5))
+    level = "low" if score < 30 else "medium" if score < 60 else "high" if score < 90 else "critical"
+    response = {
+        **base,
+        "decision": decision,
+        "final": decision != "hold",
+        "decided_by": "devin",
+        "risk": {"score": score, "level": level},
+        "classification": {"label": v["label"], "confidence": v["confidence"], "takeover_probability": p,
+                           "recommended_decision": decision},
+        "reasons": [{"code": c} for c in v["reasons"]],
+        "actions": {"allow": ["execute"], "step_up": ["request_step_up"],
+                    "hold": ["hold_transaction", "notify_owner_out_of_band"]}[decision],
+        "explanation": {"customer": v["customer_explanation"], "analyst": v["analyst_explanation"]},
+    }
+    if decision == "step_up":
+        response["step_up"] = {"channel": "in_app", "challenge_id": decision_id + "-challenge",
+                               "expires_at": iso(now + timedelta(minutes=5))}
+    elif decision == "hold":
+        response["hold"] = hold_info
+    return response
 
 
 def failure_jev(reason, error, timed_out=False):
@@ -454,25 +657,34 @@ def run(event, env, config=CONFIG, now=None):
     now = now or datetime.now(timezone.utc)
     reply_url = env.get("NIGHTWATCH_REPLY_URL") or config["reply_url"]
     jev_url = env.get("NIGHTWATCH_JEV_URL") or JEV_URL
+    decision_id = "dec_" + uuid.uuid4().hex[:16]
     body, error = load_body(event)
     if body is None:
-        return escalate_item({}, None, reply_url, failure_jev("jev_failed", error))
-
-    decision_id = "dec_" + uuid.uuid4().hex[:16]
-    fast = check_fast_path(body, config, now, decision_id)
-    if fast["shortcut"]:
-        response = fast["response"]
-        why = response["reasons"][0]["detail"]
+        # nothing for a model to judge: hold without asking Devin
+        response = decide_by_devin({}, None, None, config, now, decision_id, {})
+        response["explanation"]["analyst"] = "Fallback hold: the request is unreadable. %s." % error
+        response["model"] = None
+        why = "fallback hold, request unreadable: %s" % error
     else:
-        try:
-            facts = compute_facts(body, config)
-        except Exception as e:  # noqa: BLE001
-            return escalate_item(body, None, reply_url, failure_jev("jev_failed", "facts failed: %s" % e))
-        result = decide_by_jev(body, facts, config, now, decision_id, env.get("TYPESAFE_API_KEY", ""), jev_url)
-        if result["escalate"]:
-            return escalate_item(body, facts, reply_url, result["jev"])
-        response = result["response"]
-        why = response["reasons"][-1]["detail"]
+        fast = check_fast_path(body, config, now, decision_id)
+        if fast["shortcut"]:
+            response = fast["response"]
+            why = response["reasons"][0]["detail"]
+        else:
+            try:
+                facts = compute_facts(body, config)
+            except Exception as e:  # noqa: BLE001
+                facts, result = None, {"escalate": True, "jev": failure_jev("jev_failed", "facts failed: %s" % e)}
+            else:
+                result = decide_by_jev(body, facts, config, now, decision_id, env.get("TYPESAFE_API_KEY", ""), jev_url)
+            if result["escalate"]:
+                response = decide_by_devin(body, facts, result["jev"], config, now, decision_id, env)
+                why = "decided_by %s" % response["decided_by"]
+                if response["decided_by"] == "fallback":
+                    why += ": " + response["explanation"]["analyst"]
+            else:
+                response = result["response"]
+                why = response["reasons"][-1]["detail"]
 
     failure = deliver(response, reply_url, config)
     reason = "%s: %s" % (response["decision"], why)

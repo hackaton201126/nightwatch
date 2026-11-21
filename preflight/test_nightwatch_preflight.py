@@ -83,14 +83,45 @@ class Fake:
         self.jev_calls, self.bank_posts = [], []
         self.jev_status, self.jev_body, self.jev_delay = 200, None, 0
         self.bank_status = 200
+        self.devin_calls = []  # (method, path, body, authorization)
+        self.devin_create_status = 200
+        self.devin_output = None  # structured_output returned by GET; None = never answers
+        self.devin_get_delay = 0
         fake = self
 
         class H(BaseHTTPRequestHandler):
             def log_message(self, *a):
                 pass
 
+            def reply(self, status, out):
+                try:
+                    data = json.dumps(out).encode()
+                    self.send_response(status)
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                except OSError:
+                    pass
+
+            def devin(self, body):
+                fake.devin_calls.append((self.command, self.path, body, self.headers.get("Authorization")))
+                if self.command == "POST":
+                    return self.reply(fake.devin_create_status, {"session_id": "devin-s1"} if fake.devin_create_status < 300 else {"error": "no"})
+                if self.command == "GET":
+                    time.sleep(fake.devin_get_delay)
+                    return self.reply(200, {"session_id": "devin-s1", "status": "running", "structured_output": fake.devin_output})
+                self.reply(200, {})
+
+            def do_GET(self):
+                self.devin(None)
+
+            def do_DELETE(self):
+                self.devin(None)
+
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if self.path.startswith("/v3/"):
+                    return self.devin(body)
                 if self.path == "/jev":
                     fake.jev_calls.append((body, self.headers.get("Authorization")))
                     time.sleep(fake.jev_delay)
@@ -123,19 +154,24 @@ class PreflightCase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
 
-    def run_script(self, event, jev_url=None, reply_url=None):
+    def run_script(self, event, jev_url=None, reply_url=None, devin_url=None, devin_key="devin-key"):
         ev, out = os.path.join(self.tmp.name, "event.json"), os.path.join(self.tmp.name, "out.json")
         json.dump(event, open(ev, "w"))
         if os.path.exists(out):
             os.remove(out)
         env = dict(os.environ, EVENT_FILE=ev, OUTPUT_FILE=out, TYPESAFE_API_KEY="test-key",
+                   DEVIN_API_KEY=devin_key, DEVIN_ORG_ID="org1", DEVIN_API_URL=devin_url or self.fake.base,
+                   NIGHTWATCH_DEVIN_TIMEOUT_S="3", NIGHTWATCH_DEVIN_POLL_S="0.2",
                    NIGHTWATCH_JEV_URL=jev_url or self.fake.base + "/jev",
                    NIGHTWATCH_REPLY_URL=reply_url or self.fake.base + "/reply")
         started = time.monotonic()
         proc = subprocess.run([sys.executable, SCRIPT], env=env, capture_output=True, text=True, timeout=20)
         self.elapsed = time.monotonic() - started
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        return json.load(open(out))
+        result = json.load(open(out))
+        self.assertEqual(set(result), {"run", "reason"}, result)
+        self.assertIs(result["run"], False)
+        return result
 
     def event(self, body, **payload):
         return {"event_type": "webhook", "source": "nightwatch", "received_at": "2026-11-21T02:00:21+04:00",
@@ -261,55 +297,155 @@ class JevTests(PreflightCase):
         self.assertIsNone(f["hour_seen_in_successful_logins"])
 
 
-class EscalationTests(PreflightCase):
-    def escalated(self, out, reason):
-        self.assertEqual(list(out), ["items"], out)
-        (item,) = out["items"]
-        self.assertEqual(item["id"], "tx_5501")
-        self.assertEqual(item["title"], "Nightwatch: decide tx_5501")
-        self.assertEqual(item["reply_url"], self.fake.base + "/reply")
-        self.assertEqual(item["jev"]["escalation_reason"], reason)
-        self.assertEqual(self.fake.bank_posts, [])
-        return item
+def verdict(**over):
+    v = {"decision": "hold", "label": "account_takeover", "confidence": 0.8, "takeover_probability": 0.75,
+         "reasons": ["new_device", "ip_country_unusual"], "customer_explanation": "We paused this transfer.",
+         "analyst_explanation": "New device and an unseen country."}
+    v.update(over)
+    return v
 
-    def test_unsure_cases(self):
-        body = example("jev-attack")["state"]["request"]
-        for name, args, reason in [
-            ("low confidence", (0.5, "uncertain", 0.4), "low_confidence"),
-            ("legitimate yet high", (0.7, "legitimate", 0.9), "conflict"),
-            ("takeover yet low", (0.1, "account_takeover", 0.9), "conflict"),
-        ]:
+
+class DevinTests(PreflightCase):
+    def setUp(self):
+        super().setUp()
+        self.body = example("jev-attack")["state"]["request"]
+        self.fake.jev_says(0.5, "uncertain", 0.4)  # low confidence: Jev is unsure
+
+    def only_post(self):
+        self.assertEqual(len(self.fake.bank_posts), 1)
+        self.assert_posts_valid()
+        return self.fake.bank_posts[0]
+
+    def methods(self):
+        return [c[0] for c in self.fake.devin_calls]
+
+    def test_session_created_polled_and_deleted(self):
+        self.fake.devin_output = verdict()
+        out = self.run_script(self.event(self.body))
+        self.assertTrue(out["reason"].startswith("hold:"), out)
+        self.assertEqual(self.methods()[0], "POST")
+        self.assertIn("GET", self.methods())
+        self.assertEqual(self.methods()[-1], "DELETE")
+        method, path, create, auth = self.fake.devin_calls[0]
+        self.assertEqual((path, auth), ("/v3/organizations/org1/sessions", "Bearer devin-key"))
+        self.assertEqual(create["structured_output_required"], True)
+        self.assertEqual((create["devin_mode"], create["max_acu_limit"]), ("fast", 1))
+        self.assertEqual((create["resumable"], create["memory_enabled"]), (False, False))
+        self.assertEqual(create["tags"], ["nightwatch", "tx_5501"])
+        schema = create["structured_output_schema"]
+        self.assertEqual(schema["$schema"], "http://json-schema.org/draft-07/schema#")
+        self.assertEqual(schema["type"], "object")
+        self.assertEqual(sorted(schema["required"]), sorted(schema["properties"]))
+        self.assertEqual(len(schema["required"]), 7)
+        self.assertNotIn("$ref", json.dumps(schema))
+        self.assertEqual(self.fake.devin_calls[-1][1], "/v3/organizations/org1/sessions/devin-s1")
+
+    def test_prompt_carries_request_facts_and_jev_answer(self):
+        self.fake.devin_output = verdict()
+        self.run_script(self.event(self.body))
+        prompt = self.fake.devin_calls[0][2]["prompt"]
+        self.assertIn(json.dumps(self.body, indent=2), prompt)
+        self.assertIn('"thin_history"', prompt)
+        self.assertIn('"escalation_reason": "low_confidence"', prompt)
+        self.assertIn("never answer block", prompt.lower())
+
+    def test_hold_verdict_reaches_bank(self):
+        self.fake.devin_output = verdict()
+        self.run_script(self.event(self.body))
+        post = self.only_post()
+        self.assertEqual((post["decision"], post["decided_by"], post["final"]), ("hold", "devin", False))
+        self.assertEqual(post["model"]["provider"], "devin")
+        self.assertEqual(post["classification"], {"label": "account_takeover", "confidence": 0.8,
+                                                  "takeover_probability": 0.75, "recommended_decision": "hold"})
+        self.assertEqual([r["code"] for r in post["reasons"]], ["new_device", "ip_country_unusual"])
+        self.assertEqual(post["risk"], {"score": 75, "level": "high"})
+        decided = time.mktime(time.strptime(post["decided_at"][:19], "%Y-%m-%dT%H:%M:%S"))
+        expires = time.mktime(time.strptime(post["hold"]["expires_at"][:19], "%Y-%m-%dT%H:%M:%S"))
+        self.assertEqual(expires - decided, 15 * 60)
+
+    def test_step_up_verdict_reaches_bank(self):
+        self.fake.devin_output = verdict(decision="step_up", label="uncertain", takeover_probability=0.4)
+        out = self.run_script(self.event(self.body))
+        self.assertTrue(out["reason"].startswith("step_up:"), out)
+        post = self.only_post()
+        self.assertEqual((post["decision"], post["decided_by"], post["final"]), ("step_up", "devin", True))
+        self.assertEqual(post["step_up"]["channel"], "in_app")
+        self.assertNotIn("hold", post)
+
+    def test_no_answer_in_time_falls_back_to_hold(self):
+        out = self.run_script(self.event(self.body))
+        self.assertTrue(out["reason"].startswith("hold:"), out)
+        post = self.only_post()
+        self.assertEqual((post["decision"], post["decided_by"], post["final"]), ("hold", "fallback", False))
+        self.assertIn("no verdict", post["explanation"]["analyst"])
+        self.assertEqual(self.methods()[-1], "DELETE")
+        self.assertLess(self.elapsed, 3 + 5)
+
+    def test_invalid_verdicts_fall_back_to_hold(self):
+        bad = {
+            "block": verdict(decision="block"),
+            "unknown reason": verdict(reasons=["telepathy"]),
+            "probability out of range": verdict(takeover_probability=1.5),
+            "missing field": {k: v for k, v in verdict().items() if k != "label"},
+        }
+        for name, v in bad.items():
             with self.subTest(name):
-                self.fake.jev_says(*args)
-                item = self.escalated(self.run_script(self.event(body)), reason)["jev"]
-                self.assertEqual((item["probability"], item["label"], item["confidence"]), args)
-        self.assertIsNotNone(self.run_script(self.event(body))["items"][0]["facts"])
+                self.fake.devin_calls.clear()
+                self.fake.bank_posts.clear()
+                self.fake.devin_output = v
+                self.run_script(self.event(self.body))
+                post = self.only_post()
+                self.assertEqual((post["decision"], post["decided_by"]), ("hold", "fallback"))
+                self.assertIn("invalid verdict", post["explanation"]["analyst"])
+                self.assertEqual(self.methods()[-1], "DELETE")
 
-    def test_jev_refused(self):
-        item = self.escalated(self.run_script(self.event(example("jev-attack")["state"]["request"]),
-                                              jev_url="http://127.0.0.1:1/jev"), "jev_failed")
-        self.assertIsNotNone(item["jev"]["error"])
+    def test_create_refused_falls_back_and_states_failure(self):
+        self.fake.devin_create_status = 500
+        self.run_script(self.event(self.body))
+        post = self.only_post()
+        self.assertEqual((post["decision"], post["decided_by"]), ("hold", "fallback"))
+        self.assertIn("HTTP 500", post["explanation"]["analyst"])
+        self.assertEqual(self.methods(), ["POST"])
 
-    def test_jev_non_2xx_and_malformed(self):
-        body = example("jev-attack")["state"]["request"]
+    def test_devin_unreachable_and_unconfigured(self):
+        out = self.run_script(self.event(self.body), devin_url="http://127.0.0.1:1")
+        self.assertTrue(out["reason"].startswith("hold:"), out)
+        self.assertEqual(self.only_post()["decided_by"], "fallback")
+        self.fake.bank_posts.clear()
+        self.run_script(self.event(self.body), devin_key="")
+        post = self.only_post()
+        self.assertIn("DEVIN_API_KEY", post["explanation"]["analyst"])
+        self.assertEqual(self.fake.devin_calls, [])
+
+    def test_jev_failures_go_to_devin(self):
+        self.fake.devin_output = verdict(decision="allow", label="legitimate", takeover_probability=0.05)
         self.fake.jev_status, self.fake.jev_body = 500, {"error": "x"}
-        self.escalated(self.run_script(self.event(body)), "jev_failed")
-        self.fake.jev_status, self.fake.jev_body = 200, {"answers": {"takeover": {"noul": 7}}}
-        self.escalated(self.run_script(self.event(body)), "jev_failed")
+        self.run_script(self.event(self.body))
+        self.assertEqual(self.only_post()["decided_by"], "devin")
+        self.assertIn('"escalation_reason": "jev_failed"', self.fake.devin_calls[0][2]["prompt"])
 
-    def test_jev_timeout_within_budget(self):
-        self.fake.jev_says(0.05, "legitimate", 0.9)
+    def test_jev_timeout_then_devin_timeout_stays_in_budget(self):
         self.fake.jev_delay = 4
-        item = self.escalated(self.run_script(self.event(example("jev-attack")["state"]["request"])), "jev_timeout")
-        self.assertIs(item["jev"]["timed_out"], True)
-        self.assertLess(self.elapsed, 10)
+        self.fake.devin_get_delay = 30
+        self.run_script(self.event(self.body))
+        self.assertEqual(self.only_post()["decided_by"], "fallback")
+        self.assertLess(self.elapsed, 2 + 3 + 5 + 4)
 
-    def test_truncated_payload(self):
-        out = self.run_script(self.event(example("jev-attack")["state"]["request"], _truncated=True))
-        self.assertEqual(len(out["items"]), 1)
-        self.assertEqual(out["items"][0]["jev"]["escalation_reason"], "jev_failed")
-        self.assertIn("truncat", out["items"][0]["jev"]["error"])
-        self.assertEqual((self.fake.jev_calls, self.fake.bank_posts), ([], []))
+    def test_unreadable_body_holds_without_devin(self):
+        out = self.run_script(self.event(self.body, _truncated=True))
+        self.assertIn("truncat", out["reason"])
+        post = self.only_post()
+        self.assertEqual((post["decision"], post["decided_by"]), ("hold", "fallback"))
+        self.assertEqual((self.fake.jev_calls, self.fake.devin_calls), ([], []))
+
+    def test_clear_cases_do_not_call_devin(self):
+        self.run_script(self.event(small_body()))
+        self.fake.jev_says(0.05, "legitimate", 0.9)
+        self.run_script(self.event(self.body))
+        self.fake.jev_says(0.7, "account_takeover", 0.9)
+        self.run_script(self.event(self.body))
+        self.assertEqual(len(self.fake.bank_posts), 3)
+        self.assertEqual(self.fake.devin_calls, [])
 
 
 class BankFailureTests(PreflightCase):
