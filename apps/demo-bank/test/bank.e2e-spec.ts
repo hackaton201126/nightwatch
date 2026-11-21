@@ -48,9 +48,41 @@ describe('demo bank decisions (e2e)', () => {
     const page = await request(app.getHttpServer()).get('/bank');
     expect(page.status).toBe(200);
     expect(page.headers['content-type']).toContain('text/html');
-    for (const text of ['tx_e2e_1', 'hold', 'jev', '0.97', 'New device after a password reset.', '2026-11-21T02:00:20+04:00']) {
+    expect(page.text).not.toMatch(/\p{Script=Cyrillic}/u);
+    for (const text of ['tx_e2e_1', 'class="badge hold">Hold', 'class="chip">Jev', '0.97', 'New device after a password reset.', '2026-11-21T02:00:20+04:00']) {
       expect(page.text).toContain(text);
     }
+  });
+
+  it('empty page is English with the three path buttons on each card', async () => {
+    const page = await request(app.getHttpServer()).get('/bank');
+    expect(page.text).not.toMatch(/\p{Script=Cyrillic}/u);
+    for (const t of ['Passes at once', 'Jev decides', 'Devin decides']) expect(page.text).toContain(t);
+  });
+
+  it.each([
+    ['allow', 'fast_path', 'allow', 'Allow', 'Fast path'],
+    ['step_up', 'jev', 'step_up', 'Step-up', 'Jev'],
+    ['hold', 'devin', 'hold', 'Hold', 'Devin'],
+    ['block', 'fallback', '', 'Block', 'Fallback'],
+  ])('shows %s by %s as a labelled row keeping its badge class', async (raw, by, cls, label, byLabel) => {
+    const post = await request(app.getHttpServer())
+      .post('/bank/decisions')
+      .send(decision({
+          transaction_id: 'tx_lbl',
+          decision: raw,
+          decided_by: by,
+          ...(raw === 'step_up'
+            ? { hold: undefined, step_up: { channel: 'push', challenge_id: 'ch_1', expires_at: '2026-11-21T03:00:20Z' } }
+            : {}),
+        }));
+    expect(post.status).toBe(202);
+    const page = await request(app.getHttpServer()).get('/bank');
+    const row = page.text.split('<tbody>')[2];
+    expect(row).toContain(`class="badge ${cls}">${label}</span>`);
+    expect(row).toContain(`class="chip">${byLabel}</span>`);
+    const list = await request(app.getHttpServer()).get('/bank/decisions');
+    expect(list.body[0]).toMatchObject({ decision: raw, decided_by: by });
   });
 
   it('rejects an invalid decision with 400 and keeps it off the list and the page', async () => {

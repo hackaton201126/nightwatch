@@ -12,6 +12,9 @@ export interface PageView {
   formError?: string;
 }
 
+const DECISION_LABELS: Record<string, string> = { allow: 'Allow', step_up: 'Step-up', hold: 'Hold', block: 'Block' };
+const DECIDED_BY_LABELS: Record<string, string> = { fast_path: 'Fast path', jev: 'Jev', devin: 'Devin', fallback: 'Fallback' };
+
 const STYLE = `
 body{font-family:system-ui,sans-serif;margin:12px 20px;font-size:14px;color:#222}
 h1{font-size:18px;margin:10px 0 6px}
@@ -90,7 +93,7 @@ export class BankPageService {
       .map((d) => {
         const p = d.classification?.takeover_probability;
         const badgeClass = ['allow', 'step_up', 'hold'].includes(d.decision) ? d.decision : '';
-        return `<tr>${td(d.decided_at)}${td(names.get(d.transaction_id) ?? '')}${td(d.transaction_id)}<td><span class="badge ${badgeClass}">${this.escapeHtml(d.decision)}</span></td><td><span class="chip">${this.escapeHtml(d.decided_by)}</span></td>${td(p === undefined ? '' : String(p))}${td(d.explanation.analyst)}</tr>`;
+        return `<tr>${td(d.decided_at)}${td(names.get(d.transaction_id) ?? '')}${td(d.transaction_id)}<td><span class="badge ${badgeClass}">${this.escapeHtml(DECISION_LABELS[d.decision] ?? d.decision)}</span></td><td><span class="chip">${this.escapeHtml(DECIDED_BY_LABELS[d.decided_by] ?? d.decided_by)}</span></td>${td(p === undefined ? '' : String(p))}${td(d.explanation.analyst)}</tr>`;
       })
       .join('\n');
     return `<!doctype html>

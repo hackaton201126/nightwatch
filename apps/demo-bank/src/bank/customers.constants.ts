@@ -2,9 +2,9 @@ export const PATH_IDS = ['fast', 'jev', 'devin'] as const;
 export type PathId = (typeof PATH_IDS)[number];
 
 export const PATH_LABELS: Record<PathId, string> = {
-  fast: 'Пройдёт сразу',
-  jev: 'Решит Jev',
-  devin: 'Решит Devin',
+  fast: 'Passes at once',
+  jev: 'Jev decides',
+  devin: 'Devin decides',
 };
 
 export type Anonymizer = 'none_detected' | 'vpn';
@@ -145,4 +145,4 @@ export const CUSTOMERS: CustomerProfile[] = [
 
 export const FORM_COUNTRIES = ['GB', 'TR', 'GE', 'IN', 'KZ', 'RU', 'US'] as const;
 
-export const CUSTOM_LABEL = 'Своя транзакция';
+export const CUSTOM_LABEL = 'Custom transaction';
