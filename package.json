@@ -1,13 +1,15 @@
 {
-  "name": "nightwatch-sentinel",
+  "name": "nightwatch",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "jest --runInBand",
+    "test": "npm run test:unit && npm run test:e2e",
     "lint": "eslint .",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test:unit": "jest --runInBand --testRegex '.*\\.spec\\.ts$' --rootDir src",
+    "test:e2e": "jest --runInBand --testRegex '.*\\.e2e-spec\\.ts$' --rootDir test"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -31,7 +33,11 @@
     "typescript-eslint": "^8.0.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": ".",
     "testRegex": ".*(\\.spec|\\.e2e-spec)\\.ts$",
     "transform": {

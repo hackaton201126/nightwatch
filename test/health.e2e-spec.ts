@@ -18,9 +18,9 @@ describe('GET /health (e2e)', () => {
     await app.close();
   });
 
-  it('returns 200 with {"status":"ok","app":"bank"}', async () => {
+  it('returns 200 with {"status":"ok"}', async () => {
     const res = await request(app.getHttpServer()).get('/health');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'ok', app: 'bank' });
+    expect(res.body).toEqual({ status: 'ok' });
   });
 });
