@@ -25,6 +25,25 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+export interface CustomChoices {
+  amountMinor: number;
+  beneficiary: 'known' | 'new';
+  device: 'usual' | 'new';
+  network: 'home' | 'vpn' | 'country';
+  country: string;
+  loginTime: 'now' | 'night';
+}
+
+interface Parts {
+  transferAt: number;
+  loginBefore: number;
+  amountMinor: number;
+  deviceId: string;
+  deviceFirstSeenAt: number;
+  network: Net;
+  beneficiary: { beneficiary_id: string; is_new: boolean };
+}
+
 export interface CustomerCard {
   id: string;
   name: string;
@@ -125,36 +144,77 @@ export class CustomersService {
 
   /** Builds the customer's request for a path, with the transfer at the moment that fits it relative to `now`. */
   build(profile: CustomerProfile, path: PathId, now: Date = new Date()): RiskRequest {
-    let transferAt: number;
-    let loginBefore: number;
-    let amountMinor: number;
-    let deviceId = profile.deviceId;
-    let deviceFirstSeenAt = now.getTime() - profile.deviceAgeDays * DAY;
-    let network: Net;
-    let beneficiary: { beneficiary_id: string; is_new: boolean };
     const newBeneficiary = `ben_new_${randomUUID().slice(0, 6)}`;
+    const short = profile.id.slice(4);
+    const usualDevice = { deviceId: profile.deviceId, deviceFirstSeenAt: now.getTime() - profile.deviceAgeDays * DAY };
 
     if (path === 'fast') {
-      transferAt = this.latestLocalTime(now, profile.fast.hour, 30, 0);
-      loginBefore = 3 * MINUTE;
-      amountMinor = profile.fast.amountMinor;
-      network = this.homeNet(profile, `ipr_${profile.id.slice(4)}_now`);
-      beneficiary = { beneficiary_id: profile.fast.beneficiaryId, is_new: false };
-    } else if (path === 'jev') {
-      transferAt = this.latestLocalTime(now, profile.jev.hour, 0, 20);
-      loginBefore = 20 * SECOND;
-      amountMinor = profile.jev.amountMinor;
-      deviceId = `dev_new_${profile.id.slice(4)}`;
-      deviceFirstSeenAt = transferAt - 2 * MINUTE;
-      network = { ip_ref: `ipr_${profile.id.slice(4)}_jev`, ip_country: profile.homeCountry, anonymizer: profile.jev.anonymizer };
-      beneficiary = { beneficiary_id: newBeneficiary, is_new: true };
-    } else {
-      transferAt = this.latestLocalTime(now, profile.devin.hour, 30, 0);
-      loginBefore = 3 * MINUTE;
-      amountMinor = profile.devin.amountMinor;
-      network = { ip_ref: `ipr_${profile.id.slice(4)}_devin`, ip_country: profile.devin.country, anonymizer: profile.anonymizer };
-      beneficiary = { beneficiary_id: newBeneficiary, is_new: true };
+      return this.assemble(profile, path, now, {
+        transferAt: this.latestLocalTime(now, profile.fast.hour, 30, 0),
+        loginBefore: 3 * MINUTE,
+        amountMinor: profile.fast.amountMinor,
+        ...usualDevice,
+        network: this.homeNet(profile, `ipr_${short}_now`),
+        beneficiary: { beneficiary_id: profile.fast.beneficiaryId, is_new: false },
+      });
     }
+    if (path === 'jev') {
+      const transferAt = this.latestLocalTime(now, profile.jev.hour, 0, 20);
+      return this.assemble(profile, path, now, {
+        transferAt,
+        loginBefore: 20 * SECOND,
+        amountMinor: profile.jev.amountMinor,
+        deviceId: `dev_new_${short}`,
+        deviceFirstSeenAt: transferAt - 2 * MINUTE,
+        network: { ip_ref: `ipr_${short}_jev`, ip_country: profile.homeCountry, anonymizer: profile.jev.anonymizer },
+        beneficiary: { beneficiary_id: newBeneficiary, is_new: true },
+      });
+    }
+    return this.assemble(profile, path, now, {
+      transferAt: this.latestLocalTime(now, profile.devin.hour, 30, 0),
+      loginBefore: 3 * MINUTE,
+      amountMinor: profile.devin.amountMinor,
+      ...usualDevice,
+      network: { ip_ref: `ipr_${short}_devin`, ip_country: profile.devin.country, anonymizer: profile.anonymizer },
+      beneficiary: { beneficiary_id: newBeneficiary, is_new: true },
+    });
+  }
+
+  /** Builds a request from the presenter's form choices applied to the customer's history. */
+  buildCustom(profile: CustomerProfile, c: CustomChoices, now: Date = new Date()): RiskRequest {
+    const short = profile.id.slice(4);
+    const newDevice = c.device === 'new';
+    const loginBefore = newDevice ? 20 * SECOND : 3 * MINUTE;
+    let transferAt = now.getTime();
+    if (c.loginTime === 'night') {
+      let loginAt = this.latestLocalTime(now, 2, 0, 0);
+      if (loginAt + loginBefore > now.getTime()) loginAt -= DAY;
+      transferAt = loginAt + loginBefore;
+    }
+    const loginAt = transferAt - loginBefore;
+    const ref = `ipr_${short}_custom`;
+    const network: Net =
+      c.network === 'home'
+        ? this.homeNet(profile, ref)
+        : c.network === 'vpn'
+          ? { ip_ref: ref, ip_country: profile.homeCountry, anonymizer: 'vpn' }
+          : this.homeNet(profile, ref, c.country);
+    return this.assemble(profile, 'custom', now, {
+      transferAt,
+      loginBefore,
+      amountMinor: c.amountMinor,
+      deviceId: newDevice ? `dev_new_${short}_${randomUUID().slice(0, 6)}` : profile.deviceId,
+      deviceFirstSeenAt: newDevice ? loginAt - 2 * MINUTE : now.getTime() - profile.deviceAgeDays * DAY,
+      network,
+      beneficiary:
+        c.beneficiary === 'new'
+          ? { beneficiary_id: `ben_new_${randomUUID().slice(0, 6)}`, is_new: true }
+          : { beneficiary_id: profile.fast.beneficiaryId, is_new: false },
+    });
+  }
+
+  private assemble(profile: CustomerProfile, path: PathId | 'custom', now: Date, p: Parts): RiskRequest {
+    const { transferAt, loginBefore, amountMinor, deviceId, deviceFirstSeenAt, network, beneficiary } = p;
 
     const loginAt = transferAt - loginBefore;
     const past = this.pastAttempts(profile, now, loginAt, transferAt);

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { RiskResponse } from '@app/contracts';
-import { PATH_IDS, PATH_LABELS } from './customers.constants';
+import { CUSTOM_LABEL, FORM_COUNTRIES, PATH_IDS, PATH_LABELS } from './customers.constants';
 import { CustomerCard } from './customers.service';
 import { SendOutcome } from './transaction-sender.service';
 
@@ -8,6 +8,8 @@ export interface PageView {
   configured: boolean;
   sends: SendOutcome[];
   customers: CustomerCard[];
+  /** One-line error of the last refused custom form. */
+  formError?: string;
 }
 
 const STYLE = `
@@ -24,6 +26,10 @@ table{border-collapse:collapse;width:100%;font-size:12px}
 td,th{border:1px solid #ddd;padding:3px 6px;text-align:left}
 .badge{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-weight:600}
 .badge.allow{background:#2e9e4f}.badge.step_up{background:#e0a100}.badge.hold{background:#d63b3b}
+.custom{margin:8px 0;padding:6px 10px;border:1px solid #ccc;border-radius:6px;font-size:12px}
+.custom form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0}
+.custom input[type=text]{width:80px}
+.err{color:#d63b3b;font-weight:600}
 .chip{display:inline-block;padding:1px 7px;border-radius:4px;background:#e8eaf0;color:#333}
 `;
 
@@ -52,6 +58,24 @@ export class BankPageService {
 </dl>${buttons}</div>`;
   }
 
+  private form(view: PageView): string {
+    const e = (s: string) => this.escapeHtml(s);
+    const opts = (xs: [string, string][]) => xs.map(([v, l]) => `<option value="${e(v)}">${e(l)}</option>`).join('');
+    const customers = view.customers.map((c) => [c.id, c.name] as [string, string]);
+    const countries = FORM_COUNTRIES.map((c) => [c, c] as [string, string]);
+    const err = view.formError ? `<span class="err">${e(view.formError)}</span>` : '';
+    return `<div class="custom"><form method="post" action="/bank/transactions">
+<label>Customer <select name="customerId">${opts(customers)}</select></label>
+<label>AED <input type="text" name="amountAed" inputmode="decimal" size="8"></label>
+<label>Beneficiary <select name="beneficiary">${opts([['known', 'known'], ['new', 'new']])}</select></label>
+<label>Device <select name="device">${opts([['usual', 'usual'], ['new', 'new']])}</select></label>
+<label>Network <select name="network">${opts([['home', 'home'], ['vpn', 'VPN'], ['country', 'another country']])}</select></label>
+<label>Country <select name="country">${opts(countries)}</select></label>
+<label>Login <select name="loginTime">${opts([['now', 'now'], ['night', '02:00 local']])}</select></label>
+<button type="submit"${view.configured ? '' : ' disabled'}>Send</button>${err}
+</form></div>`;
+  }
+
   render(decisions: RiskResponse[], view: PageView): string {
     const td = (c: string) => `<td>${this.escapeHtml(c)}</td>`;
     const names = new Map(view.sends.map((o) => [o.transactionId, o.customerName]));
@@ -60,7 +84,7 @@ export class BankPageService {
       ? ''
       : '<p>Buttons are disabled: set NIGHTWATCH_WEBHOOK_URL and NIGHTWATCH_WEBHOOK_SECRET.</p>';
     const sendRows = view.sends
-      .map((o) => `<tr>${[o.at, o.customerName, PATH_LABELS[o.path], o.transactionId, o.accepted ? 'accepted' : 'not accepted', o.detail].map(td).join('')}</tr>`)
+      .map((o) => `<tr>${[o.at, o.customerName, (o.path === 'custom' ? CUSTOM_LABEL : PATH_LABELS[o.path]), o.transactionId, o.accepted ? 'accepted' : 'not accepted', o.detail].map(td).join('')}</tr>`)
       .join('\n');
     const rows = decisions
       .map((d) => {
@@ -73,7 +97,7 @@ export class BankPageService {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="2">
+${view.formError ? '<meta http-equiv="refresh" content="4;url=/bank">' : '<meta http-equiv="refresh" content="2">'}
 <title>Demo bank — Nightwatch decisions</title>
 <style>${STYLE}</style>
 </head>
@@ -83,6 +107,7 @@ export class BankPageService {
 ${cards}
 </div>
 ${note}
+${this.form(view)}
 <h1>Sent to Nightwatch</h1>
 <table>
 <thead><tr><th>Sent</th><th>Customer</th><th>Path</th><th>Transaction</th><th>Webhook</th><th>Detail</th></tr></thead>
