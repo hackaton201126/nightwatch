@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nightwatch Risk Request",
+  "type": "object",
+  "required": ["schema_version", "as_of", "transaction", "customer", "session", "history", "policy"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "as_of": { "$ref": "#/$defs/timestamp" },
+
+    "transaction": {
+      "type": "object",
+      "required": ["transaction_id", "requested_at", "initiator_id", "source_account_id", "amount", "amount_policy_minor", "authorization", "beneficiary"],
+      "properties": {
+        "transaction_id": { "type": "string" },
+        "requested_at": { "$ref": "#/$defs/timestamp" },
+        "channel": { "enum": ["mobile", "web", "api", "branch", "other"] },
+        "initiator_id": { "type": "string" },
+        "source_account_id": { "type": "string" },
+        "amount": { "$ref": "#/$defs/money" },
+        "amount_policy_minor": { "type": "integer", "minimum": 0 },
+        "source_account_available_balance_policy_minor": { "type": ["integer", "null"] },
+        "authorization": { "enum": ["authorized", "unauthorized", "unknown"] },
+        "beneficiary": {
+          "type": "object",
+          "required": ["beneficiary_id"],
+          "properties": {
+            "beneficiary_id": { "type": "string" },
+            "country": { "type": ["string", "null"] },
+            "is_new_for_customer": { "type": ["boolean", "null"] },
+            "cross_border": { "type": ["boolean", "null"] },
+            "fraud_link_status": { "enum": ["confirmed", "suspected", "none_detected", "unknown"] }
+          }
+        }
+      }
+    },
+
+    "customer": {
+      "type": "object",
+      "required": ["customer_id", "timezone"],
+      "properties": {
+        "customer_id": { "type": "string" },
+        "timezone": { "type": "string", "examples": ["Asia/Dubai"] },
+        "kyc_status": { "enum": ["verified", "unverified", "unknown"] }
+      }
+    },
+
+    "session": {
+      "type": "object",
+      "properties": {
+        "session_id": { "type": ["string", "null"] },
+        "authenticated_at": { "$ref": "#/$defs/optional_timestamp" },
+        "auth_factors": { "type": "array", "items": { "type": "string" } },
+        "device_id": { "type": ["string", "null"] },
+        "device_first_seen_at": { "$ref": "#/$defs/optional_timestamp" },
+        "last_password_reset_at": { "$ref": "#/$defs/optional_timestamp" },
+        "last_mfa_change_at": { "$ref": "#/$defs/optional_timestamp" },
+        "network": { "$ref": "#/$defs/network" }
+      }
+    },
+
+    "history": {
+      "type": "object",
+      "required": ["recent_login_attempts", "recent_outgoing_requests", "windows"],
+      "properties": {
+        "recent_login_attempts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["occurred_at", "outcome"],
+            "properties": {
+              "occurred_at": { "$ref": "#/$defs/timestamp" },
+              "outcome": { "enum": ["success", "failure"] },
+              "device_id": { "type": ["string", "null"] },
+              "network": { "$ref": "#/$defs/network" }
+            }
+          }
+        },
+        "recent_outgoing_requests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["transaction_id", "requested_at", "amount", "status"],
+            "properties": {
+              "transaction_id": { "type": "string" },
+              "requested_at": { "$ref": "#/$defs/timestamp" },
+              "source_account_id": { "type": "string" },
+              "beneficiary_id": { "type": "string" },
+              "beneficiary_country": { "type": ["string", "null"] },
+              "beneficiary_is_new": { "type": ["boolean", "null"] },
+              "amount": { "$ref": "#/$defs/money" },
+              "status": { "enum": ["pending", "held", "executed", "declined", "cancelled"] }
+            }
+          }
+        },
+        "windows": {
+          "type": "object",
+          "properties": {
+            "10m": { "$ref": "#/$defs/activity_window" },
+            "1h": { "$ref": "#/$defs/activity_window" },
+            "6h": { "$ref": "#/$defs/activity_window" },
+            "24h": { "$ref": "#/$defs/activity_window" }
+          }
+        },
+        "baseline": {
+          "type": ["object", "null"],
+          "properties": {
+            "lookback_days": { "type": "integer", "minimum": 1 },
+            "median_outgoing_amount_policy_minor": { "type": ["integer", "null"] },
+            "p95_daily_outgoing_amount_policy_minor": { "type": ["integer", "null"] },
+            "typical_active_local_hours": {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 0, "maximum": 23 }
+            }
+          }
+        }
+      }
+    },
+
+    "policy": {
+      "type": "object",
+      "required": ["currency", "fast_path_budget"],
+      "properties": {
+        "currency": { "$ref": "#/$defs/currency" },
+        "fast_path_budget": {
+          "type": "object",
+          "required": ["window_seconds", "effective_max_count", "effective_max_total_policy_minor", "effective_max_single_policy_minor", "used_count", "used_total_policy_minor"],
+          "properties": {
+            "window_seconds": { "const": 21600 },
+            "effective_max_count": { "type": "integer", "minimum": 0 },
+            "effective_max_total_policy_minor": { "type": "integer", "minimum": 0 },
+            "effective_max_single_policy_minor": { "type": "integer", "minimum": 0 },
+            "used_count": { "type": "integer", "minimum": 0 },
+            "used_total_policy_minor": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  },
+
+  "$defs": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "optional_timestamp": { "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "money": {
+      "type": "object",
+      "required": ["currency", "minor_units"],
+      "properties": {
+        "currency": { "$ref": "#/$defs/currency" },
+        "minor_units": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "network": {
+      "type": ["object", "null"],
+      "required": ["ip_ref"],
+      "properties": {
+        "ip_ref": { "type": "string" },
+        "ip_address": {
+          "type": "string",
+          "anyOf": [{ "format": "ipv4" }, { "format": "ipv6" }]
+        },
+        "ip_country": { "type": ["string", "null"] },
+        "ip_city": { "type": ["string", "null"] },
+        "anonymizer": { "enum": ["none_detected", "vpn", "tor", "proxy", "unknown"] }
+      }
+    },
+    "activity_window": {
+      "type": ["object", "null"],
+      "required": ["attempted_count", "attempted_amount_policy_minor"],
+      "properties": {
+        "attempted_count": { "type": "integer", "minimum": 0 },
+        "attempted_amount_policy_minor": { "type": "integer", "minimum": 0 },
+        "distinct_new_beneficiaries": { "type": "integer", "minimum": 0 },
+        "near_limit_attempt_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
