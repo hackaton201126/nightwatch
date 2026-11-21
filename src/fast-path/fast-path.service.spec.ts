@@ -143,6 +143,12 @@ describe('FastPathService', () => {
     expect(allowed(r)).toBe(false);
   });
 
+  it('counts failed logins over every attempt, not only the newest 50 within 30 days', () => {
+    const successes = Array.from({ length: 50 }, () => ({ occurred_at: ago(0.05), outcome: 'success' }));
+    const failed = Array.from({ length: 3 }, () => ({ occurred_at: ago(0.1 + 0.67), outcome: 'failure' }));
+    expect(stoppers(req({ attempts: [...successes, ...failed] }))).toEqual(['failed_logins']);
+  });
+
   it('reads limits from the injected config service', async () => {
     const r = req({ amount: 500_000, window: { attempted_count: 0, attempted_amount_policy_minor: 0 } });
     expect(allowed(r)).toBe(true);

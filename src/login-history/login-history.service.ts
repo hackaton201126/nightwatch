@@ -35,19 +35,14 @@ export class LoginHistoryService {
     return Number.isNaN(t) ? null : t;
   }
 
-  /**
-   * The newest attempts (at most the configured count) within the configured days before the transfer,
-   * newest first; null when the history or the transfer time is unusable.
-   */
-  recentAttempts(request: HistoryRequest, requestedAt: number | null): LoginAttempt[] | null {
+  /** Every parseable attempt of the request, in input order, with no age or count limit. */
+  allAttempts(request: HistoryRequest): LoginAttempt[] {
     const list = request?.history?.recent_login_attempts;
-    if (!Array.isArray(list) || requestedAt === null) return null;
-    const { loginLookbackDays, maxLoginAttempts } = this.config.facts();
-    const since = requestedAt - loginLookbackDays * DAY_MS;
+    if (!Array.isArray(list)) return [];
     const attempts: LoginAttempt[] = [];
     for (const a of list) {
       const at = this.parseTime(a?.occurred_at);
-      if (at === null || at < since) continue;
+      if (at === null) continue;
       const country = a?.network?.ip_country;
       attempts.push({
         at,
@@ -56,7 +51,21 @@ export class LoginHistoryService {
         country: typeof country === 'string' ? country : null,
       });
     }
-    return attempts.sort((x, y) => y.at - x.at).slice(0, maxLoginAttempts);
+    return attempts;
+  }
+
+  /**
+   * The newest attempts (at most the configured count) within the configured days before the transfer,
+   * newest first; null when the history or the transfer time is unusable.
+   */
+  recentAttempts(request: HistoryRequest, requestedAt: number | null): LoginAttempt[] | null {
+    if (!Array.isArray(request?.history?.recent_login_attempts) || requestedAt === null) return null;
+    const { loginLookbackDays, maxLoginAttempts } = this.config.facts();
+    const since = requestedAt - loginLookbackDays * DAY_MS;
+    return this.allAttempts(request)
+      .filter((a) => a.at >= since)
+      .sort((x, y) => y.at - x.at)
+      .slice(0, maxLoginAttempts);
   }
 
   /** Failed attempts in the configured window up to and including the login. */

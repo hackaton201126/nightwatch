@@ -80,8 +80,8 @@ export class FastPathService {
     if (authAt === null) {
       stoppers.push('authenticated_at_unknown');
     } else {
-      const attempts = this.history.recentAttempts(request, requestedAt) ?? [];
-      if (this.history.failedBefore(attempts, authAt) >= st.failedLoginsHour) stoppers.push('failed_logins');
+      // counted over every attempt, not only the newest 50 within 30 days
+      if (this.history.failedBefore(this.history.allAttempts(request), authAt) >= st.failedLoginsHour) stoppers.push('failed_logins');
     }
     return stoppers;
   }
