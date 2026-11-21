@@ -29,7 +29,7 @@
       "additionalProperties": false,
       "required": ["score", "level"],
       "properties": {
-        "score": { "type": "integer", "minimum": 0, "maximum": 100, "description": "The rules' score from the signals; the model never changes it." },
+        "score": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Jev's takeover probability × 100; 0 on the fast path." },
         "level": { "enum": ["low", "medium", "high", "critical"] }
       }
     },
@@ -56,14 +56,14 @@
     "reasons": {
       "type": "array",
       "maxItems": 10,
-      "description": "The signals that decided, strongest first. Codes come only from the list; the model may not invent one.",
+      "description": "The facts and shortcuts behind the decision. Codes come only from the list; a model may not invent one.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["code", "weight"],
+        "required": ["code"],
         "properties": {
           "code": { "$ref": "#/definitions/reason_code" },
-          "weight": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "weight": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Unused in phase 1: no weights." },
           "detail": { "type": "string", "maxLength": 200 }
         }
       }
