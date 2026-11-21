@@ -17,7 +17,7 @@ flowchart LR
   budget -->|нет| score{Оценка правил}
   score -->|меньше 40| allow
   score -->|90 и выше, мул, неавторизовано| block[block]
-  score -->|40-89| llm[Классификация LLM, до 3 с]
+  score -->|40-89| llm[Классификация LLM, срок classifier.timeoutMs]
   llm --> answer[allow / step_up / hold]
   llm -->|не успела| fallback[step_up / hold]
   answer -.->|hold| devin[Devin разбирает, итог webhook]
@@ -58,7 +58,9 @@ flowchart LR
 | 60–89 | `hold` | LLM в границах правил (не ниже `step_up`) |
 | 90 и выше | `block` | правила |
 
-- **LLM не успела за 3 с** → запасное правило: 40–59 → `step_up`, 60–89 → `hold`.
+- **LLM не успела за `classifier.timeoutMs`** (по умолчанию 60 000 мс = 1 мин) → запасное правило из
+  `classifier.fallback`: 40–59 → `step_up`, 60–89 → `hold`. Банк держит запрос до этого срока: его
+  таймаут на вызов должен быть больше.
 - **Ответ LLM проверяется:** значения только из списков, коды причин только из сигналов.
 - **`step_up`** — ещё одно подтверждение в текущей сессии (экран с предупреждением, биометрия, PIN,
   код). Для среднего риска.
@@ -84,7 +86,7 @@ flowchart LR
 | Разбор дела | пока операция в `hold` | вердикт, уверенность, объяснение для аналитика и клиента |
 | Поиск схем | раз в час и по кнопке | предложения в конфигурацию с цифрами: сколько поймали бы и сколько честных задели бы; для новой логики — PR с правилом и тестом |
 
-Devin в синхронные 3 с не укладывается: в серой зоне с ним ответ `hold`, его вердикт приходит webhook.
+Классификация в серой зоне тоже на Devin: вызов через Devin CLI — около 6–8 с, в минуту по умолчанию укладывается.
 
 ## Конфигурация (на банк)
 
@@ -92,7 +94,7 @@ Devin в синхронные 3 с не укладывается: в серой 
 budget: { windowHours: 6, maxCount: 5, maxTotal: 2000, maxPerTransaction: 1000 }
 riskyContext: { nightHours: "00:00-05:00", newDeviceHours: 24, freshSessionMinutes: 10, budgetFactor: 0.1 }
 decisions: { stepUp: 40, hold: 60, block: 90 }
-classifier: { timeoutMs: 3000, fallback: { stepUp: step_up, hold: hold } }
+classifier: { timeoutMs: 60000, fallback: { stepUp: step_up, hold: hold } }   # срок LLM, по умолчанию 1 мин
 highRiskCountries: [MU, KY, VG, SC, PA]
 confirmation: { channel: push, timeoutMinutes: 15, onTimeout: block }
 analyst: { provider: devin, apiKey: "apk_...", baseUrl: https://api.devin.ai, patternScan: hourly }
