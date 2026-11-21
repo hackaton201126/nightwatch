@@ -4,15 +4,41 @@
   "description": "The synchronous answer to a Nightwatch Risk Request. The bank executes the transaction only on decision=allow. When final=false the decision is not settled yet (a hold waiting for the owner's confirmation or for the analysis): the final one arrives by webhook and at GET /v1/decisions/{decision_id}.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "decision_id", "transaction_id", "decided_at", "decision", "final", "decided_by", "risk", "reasons", "actions", "explanation", "latency_ms"],
+  "required": [
+    "schema_version",
+    "decision_id",
+    "transaction_id",
+    "decided_at",
+    "decision",
+    "final",
+    "decided_by",
+    "risk",
+    "reasons",
+    "actions",
+    "explanation",
+    "latency_ms"
+  ],
   "properties": {
-    "schema_version": { "const": "1.0" },
-    "decision_id": { "type": "string" },
-    "transaction_id": { "type": "string", "description": "Echo of transaction.transaction_id of the request." },
-    "decided_at": { "$ref": "#/definitions/timestamp" },
-
+    "schema_version": {
+      "const": "1.0"
+    },
+    "decision_id": {
+      "type": "string"
+    },
+    "transaction_id": {
+      "type": "string",
+      "description": "Echo of transaction.transaction_id of the request."
+    },
+    "decided_at": {
+      "$ref": "#/definitions/timestamp"
+    },
     "decision": {
-      "enum": ["allow", "step_up", "hold", "block"],
+      "enum": [
+        "allow",
+        "step_up",
+        "hold",
+        "block"
+      ],
       "description": "allow: execute. step_up: ask the customer to confirm in the current channel, then ask again. hold: do not execute; the transaction waits for the owner's out-of-band confirmation or the analysis. block: refuse."
     },
     "final": {
@@ -20,39 +46,88 @@
       "description": "true: the decision will not change. false: it may still change (always false for hold)."
     },
     "decided_by": {
-      "enum": ["fast_path", "rules", "jev", "devin", "fallback"],
+      "enum": [
+        "fast_path",
+        "rules",
+        "jev",
+        "devin",
+        "fallback"
+      ],
       "description": "fast_path: a small amount within the daily cap, let through before any model, with no strong takeover sign. rules: a threshold or a hard rule decided without a model. jev: the TypeSafe Jev classifier's probability, within the rules' bounds. devin: Devin decided a case Jev was unsure of, within the rules' bounds. fallback: a model did not answer in time or its answer was rejected; the configured fallback decided."
     },
-
     "risk": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["score", "level"],
+      "required": [
+        "score",
+        "level"
+      ],
       "properties": {
-        "score": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Jev's takeover probability × 100; 0 on the fast path." },
-        "level": { "enum": ["low", "medium", "high", "critical"] }
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Jev's takeover probability × 100; 0 on the fast path."
+        },
+        "level": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        }
       }
     },
-
     "classification": {
       "description": "The classification that decided: Jev's, or Devin's when Jev was unsure. Null when decided_by is fast_path or rules, or when the model failed.",
       "anyOf": [
-        { "type": "null" },
+        {
+          "type": "null"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["label", "confidence", "recommended_decision"],
+          "required": [
+            "label",
+            "confidence",
+            "recommended_decision"
+          ],
           "properties": {
-            "takeover_probability": { "type": "number", "minimum": 0, "maximum": 1, "description": "Jev's probability that someone other than the owner runs the session." },
-            "label": { "enum": ["legitimate", "account_takeover", "authorized_push_payment_scam", "structuring", "mule_activity", "other_fraud", "uncertain"] },
-            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-            "recommended_decision": { "enum": ["allow", "step_up", "hold", "block"], "description": "What the model proposed; decision may differ when the rules' bounds overrode it." },
-            "overridden_by_rules": { "type": "boolean" }
+            "takeover_probability": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Jev's probability that someone other than the owner runs the session."
+            },
+            "label": {
+              "enum": [
+                "legitimate",
+                "account_takeover",
+                "uncertain"
+              ]
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "recommended_decision": {
+              "enum": [
+                "allow",
+                "step_up",
+                "hold",
+                "block"
+              ],
+              "description": "What the model proposed; decision may differ when the rules' bounds overrode it."
+            },
+            "overridden_by_rules": {
+              "type": "boolean"
+            }
           }
         }
       ]
     },
-
     "reasons": {
       "type": "array",
       "maxItems": 10,
@@ -60,114 +135,238 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["code"],
+        "required": [
+          "code"
+        ],
         "properties": {
-          "code": { "$ref": "#/definitions/reason_code" },
-          "weight": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Unused in phase 1: no weights." },
-          "detail": { "type": "string", "maxLength": 200 }
+          "code": {
+            "$ref": "#/definitions/reason_code"
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 200
+          }
         }
       }
     },
-
     "actions": {
       "type": "array",
       "uniqueItems": true,
       "description": "What the bank should do now, beside honouring the decision.",
-      "items": { "enum": ["execute", "request_step_up", "hold_transaction", "notify_owner_out_of_band", "terminate_session", "revoke_device", "freeze_outgoing", "open_case"] }
+      "items": {
+        "enum": [
+          "execute",
+          "request_step_up",
+          "hold_transaction",
+          "notify_owner_out_of_band",
+          "terminate_session",
+          "revoke_device",
+          "freeze_outgoing",
+          "open_case"
+        ]
+      }
     },
-
     "step_up": {
       "description": "Present when decision is step_up.",
       "anyOf": [
-        { "type": "null" },
+        {
+          "type": "null"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["channel", "challenge_id", "expires_at"],
+          "required": [
+            "channel",
+            "challenge_id",
+            "expires_at"
+          ],
           "properties": {
-            "channel": { "enum": ["in_app", "push", "sms", "call"] },
-            "challenge_id": { "type": "string" },
-            "expires_at": { "$ref": "#/definitions/timestamp" }
+            "channel": {
+              "enum": [
+                "in_app",
+                "push",
+                "sms",
+                "call"
+              ]
+            },
+            "challenge_id": {
+              "type": "string"
+            },
+            "expires_at": {
+              "$ref": "#/definitions/timestamp"
+            }
           }
         }
       ]
     },
-
     "hold": {
       "description": "Present when decision is hold.",
       "anyOf": [
-        { "type": "null" },
+        {
+          "type": "null"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["expires_at", "on_timeout", "confirmation_channel"],
+          "required": [
+            "expires_at",
+            "on_timeout",
+            "confirmation_channel"
+          ],
           "properties": {
-            "expires_at": { "$ref": "#/definitions/timestamp" },
-            "on_timeout": { "enum": ["block", "release"] },
-            "confirmation_channel": { "enum": ["push", "sms", "call", "trusted_contact", "none"], "description": "The out-of-band channel to the owner: never the session that asked." }
+            "expires_at": {
+              "$ref": "#/definitions/timestamp"
+            },
+            "on_timeout": {
+              "enum": [
+                "block",
+                "release"
+              ]
+            },
+            "confirmation_channel": {
+              "enum": [
+                "push",
+                "sms",
+                "call",
+                "trusted_contact",
+                "none"
+              ],
+              "description": "The out-of-band channel to the owner: never the session that asked."
+            }
           }
         }
       ]
     },
-
-    "fast_path_budget": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["consumed", "remaining_count", "remaining_total_policy_minor"],
-      "description": "The fast-path budget after this decision. Phase 2: absent while only login anomalies are scored.",
-      "properties": {
-        "consumed": { "type": "boolean", "description": "true when this transaction went through the fast path and used the budget." },
-        "remaining_count": { "type": "integer", "minimum": 0 },
-        "remaining_total_policy_minor": { "type": "integer", "minimum": 0 }
-      }
-    },
-
     "explanation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["customer", "analyst"],
+      "required": [
+        "customer",
+        "analyst"
+      ],
       "properties": {
-        "customer": { "type": "string", "maxLength": 300, "description": "Plain words the bank may show the customer." },
-        "analyst": { "type": "string", "maxLength": 800, "description": "Why, for the bank's analyst: the signals and the model's reading." }
+        "customer": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Plain words the bank may show the customer."
+        },
+        "analyst": {
+          "type": "string",
+          "maxLength": 800,
+          "description": "Why, for the bank's analyst: the signals and the model's reading."
+        }
       }
     },
-
-    "case_id": { "type": ["string", "null"], "description": "The case opened for a hold or a block." },
-    "latency_ms": { "type": "integer", "minimum": 0 },
+    "case_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The case opened for a hold or a block."
+    },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
     "model": {
       "description": "The last model asked; null when none was asked.",
       "anyOf": [
-        { "type": "null" },
+        {
+          "type": "null"
+        },
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["provider"],
+          "required": [
+            "provider"
+          ],
           "properties": {
-            "provider": { "enum": ["typesafe", "devin"] },
-            "name": { "type": ["string", "null"] },
-            "latency_ms": { "type": "integer", "minimum": 0 },
-            "timed_out": { "type": "boolean" }
+            "provider": {
+              "enum": [
+                "typesafe",
+                "devin"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "latency_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "timed_out": {
+              "type": "boolean"
+            }
           }
         }
       ]
     }
   },
-
   "allOf": [
-    { "if": { "properties": { "decision": { "const": "hold" } } }, "then": { "properties": { "final": { "const": false } }, "required": ["hold"] } },
-    { "if": { "properties": { "decision": { "const": "step_up" } } }, "then": { "required": ["step_up"] } },
-    { "if": { "properties": { "decided_by": { "enum": ["jev", "devin"] } } }, "then": { "required": ["classification", "model"] } }
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "hold"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "final": {
+            "const": false
+          }
+        },
+        "required": [
+          "hold"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "const": "step_up"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "step_up"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "decided_by": {
+            "enum": [
+              "jev",
+              "devin"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "classification",
+          "model"
+        ]
+      }
+    }
   ],
-
   "definitions": {
-    "timestamp": { "type": "string", "format": "date-time" },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
     "reason_code": {
       "enum": [
         "small_amount",
-        "fast_path_budget_exhausted",
-        "amount_above_fast_path_single",
         "new_device",
-        "fresh_session",
         "recent_password_reset",
         "recent_mfa_change",
         "failed_login_attempts",
@@ -176,16 +375,6 @@
         "off_hours",
         "login_to_transfer_fast",
         "thin_history",
-        "amount_vs_baseline",
-        "new_foreign_beneficiary",
-        "high_risk_country",
-        "burst",
-        "balance_share",
-        "structuring",
-        "fan_out",
-        "daily_volume",
-        "beneficiary_fraud_link",
-        "unauthorized",
         "model_assessment"
       ]
     }
