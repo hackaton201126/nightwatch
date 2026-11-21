@@ -12,11 +12,9 @@ Nightwatch и получает `allow`, `step_up`, `hold` или `block`.
 
 ```mermaid
 flowchart LR
-  bank[Банк: перевод] -->|POST /v1/decisions| budget{В бюджете и без тревог?}
-  budget -->|да| allow[allow]
-  budget -->|нет| score{Оценка правил}
-  score -->|меньше 40| allow
-  score -->|90 и выше, мул, неавторизовано| block[block]
+  bank[Банк: перевод] -->|POST /v1/decisions| score{Оценка аномалий входа}
+  score -->|меньше 40| allow[allow]
+  score -->|90 и выше| block[block]
   score -->|40-89| llm[Классификация Devin, синхронно, до classifier.timeoutMs]
   llm --> answer[allow / step_up / hold в ответе]
   llm -->|не успела| fallback[step_up / hold]
@@ -24,30 +22,24 @@ flowchart LR
   fallback -.->|hold| owner
 ```
 
-## Пороги
+## Фаза 1: аномалии входа
 
-| | Значение |
-|---|---|
-| Бюджет без проверки | окно 6 ч: до 5 операций, до AED 2 000 в сумме, каждая до AED 1 000 |
-| Рискованный контекст | ночь 00–05, устройство моложе 24 ч, сессия моложе 10 мин, сброс пароля или биометрии |
-| Бюджет в рискованном контексте | ×0,1 → 1 операция, AED 200 |
-| Всегда проверка | больше AED 1 000, новый получатель за границей, больше 20% баланса |
+Сегодня распознаём только странный вход: кто и откуда вошёл в сессию, из которой идёт операция. Сумма,
+получатель и частота операций — фаза 2. Все поля уже есть в
+[схеме запроса](nightwatch-risk-request.schema.json).
 
-## Сигналы
+| Сигнал, код причины | Условие | Поле запроса | Вес |
+|---|---|---|---|
+| Новое устройство `new_device` | впервые меньше 24 ч назад | `session.device_first_seen_at` | 30 |
+| Анонимайзер `anonymizer_network` | VPN, Tor, прокси | `session.network.anonymizer` | 20 |
+| Необычная страна `ip_country_unusual` | страна IP не встречалась в успешных входах клиента | `session.network.ip_country`, `history.recent_login_attempts` | 20 |
+| Сброс доступа `recent_password_reset`, `recent_mfa_change` | пароль или MFA сменены меньше 24 ч назад | `session.last_password_reset_at`, `session.last_mfa_change_at` | 25 |
+| Неудачные входы `failed_login_attempts` | 3+ неудачные попытки за 1 ч до входа | `history.recent_login_attempts` | 15 |
+| Необычный час `off_hours` | вход вне обычных часов клиента | `session.authenticated_at`, `history.baseline.typical_active_local_hours` | 10 |
+| Быстро к операции `login_to_transfer_fast` | от входа до операции меньше 60 с | `session.authenticated_at`, `transaction.requested_at` | 10 |
 
-| Сигнал | Условие | Вес |
-|---|---|---|
-| Новое устройство | впервые меньше 24 ч назад | 25 |
-| Сеть | VPN, Tor, прокси, необычная страна IP | 15 |
-| Быстро к переводу | от входа меньше 60 с | 15 |
-| Сумма | от 3× обычной | 20 |
-| Новый получатель за границей | | 15 |
-| Всплеск | 3+ перевода новым получателям за 10 мин | 25 |
-| Доля баланса | больше 30% за 1 ч | 30 |
-| Дробление | 3+ суммы у порога (80–100%) за 1 ч | 30 |
-| Веер | 3+ новых получателя за 1 ч | 15 |
-| Дневной объём | больше 2× дневного максимума за 30 дней | 15 |
-| Мул | на этот IBAN шли деньги других жертв | 40 |
+Пример: злоумышленник с нового устройства через VPN ночью сразу идёт к переводу → 30 + 20 + 10 + 10 =
+70 → `hold`. Плюс чужая страна → 90 → `block`. Alice со своего телефона днём → 0 → `allow`.
 
 ## Оценка → решение
 
@@ -67,6 +59,14 @@ flowchart LR
 - **`hold`** — перевод остановлен, владельца спрашиваем вне сессии: звонок, пуш на старое
   устройство. Срок 15 мин, по таймауту `block`. Решение не окончательное (`final: false`), итог —
   webhook и `GET /v1/decisions/{id}`.
+
+## Фаза 2 (после хакатона)
+
+- **Бюджет без проверки:** окно 6 ч, до 5 операций и AED 2 000 (каждая до AED 1 000), в рискованном
+  контексте ×0,1.
+- **Сигналы операции:** сумма от 3× обычной, новый получатель за границей, всплеск, доля баланса,
+  дробление, веер, дневной объём, мул.
+- **Поиск схем по потоку** (Devin) с предложениями в конфигурацию.
 
 ## API
 
@@ -92,24 +92,21 @@ flowchart LR
 ## Конфигурация (на банк)
 
 ```yaml
-budget: { windowHours: 6, maxCount: 5, maxTotal: 2000, maxPerTransaction: 1000 }
-riskyContext: { nightHours: "00:00-05:00", newDeviceHours: 24, freshSessionMinutes: 10, budgetFactor: 0.1 }
+loginSignals: { newDevice: 30, anonymizer: 20, unusualCountry: 20, accessReset: 25, failedLogins: 15, unusualHour: 10, fastToTransaction: 10 }
+loginWindows: { newDeviceHours: 24, accessResetHours: 24, failedLoginsHour: 3, fastToTransactionSeconds: 60 }
 decisions: { stepUp: 40, hold: 60, block: 90 }
 classifier: { timeoutMs: 60000, fallback: { stepUp: step_up, hold: hold } }   # срок LLM, по умолчанию 1 мин
-highRiskCountries: [MU, KY, VG, SC, PA]
 confirmation: { channel: push, timeoutMinutes: 15, onTimeout: block }
 analyst: { provider: devin, apiKey: "apk_...", baseUrl: https://api.devin.ai, patternScan: hourly }
 ```
 
 ## Демо (5 мин)
 
-1. Честные операции: кофе AED 35 и обычный платёж Alice проходят мгновенно.
-2. 02:00: злоумышленник прошёл FaceID и KYC от имени Alice, новое устройство, VPN.
-3. Перевод AED 450 000 на новый счёт на Маврикии → оценка 92, `hold`.
-4. Попытка частями → бюджет кончился, всплеск и дробление → `hold`.
-5. «Телефон Alice»: «Это вы?» → «Нет» → `block`, сессия оборвана, деньги на месте.
-6. Дело в консоли: разбор Devin.
-7. Devin нашёл мула → правка конфигурации одной кнопкой → повтор ловится раньше.
+1. Alice входит со своего телефона днём и платит → `allow`, мгновенно.
+2. 02:00: злоумышленник прошёл FaceID и KYC от имени Alice — новое устройство, VPN, сразу к переводу.
+3. Перевод AED 450 000 → аномалии входа, оценка 70 → Devin классифицирует «захват аккаунта» → `hold`.
+4. «Телефон Alice»: «Это вы?» → «Нет» → `block`, сессия оборвана, деньги на месте.
+5. Дело в консоли: сигналы входа и разбор Devin.
 
 ## Состав
 
@@ -128,3 +125,5 @@ analyst: { provider: devin, apiKey: "apk_...", baseUrl: https://api.devin.ai, pa
 - Предложения Devin в демо: правка конфигурации или PR?
 - Схема `step_up`: каналы только в сессии (экран, биометрия, PIN, код); в запросе поле `step_up_result`.
   Согласовать с Андреем.
+- Запрос требует `policy.fast_path_budget` и историю исходящих операций — в фазе 1 не нужны. Сделать
+  необязательными? Согласовать с Андреем. В ответе `fast_path_budget` уже необязателен.

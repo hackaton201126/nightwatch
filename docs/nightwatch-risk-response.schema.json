@@ -4,7 +4,7 @@
   "description": "The synchronous answer to a Nightwatch Risk Request. The bank executes the transaction only on decision=allow. When final=false the decision is not settled yet (a hold waiting for the owner's confirmation or for the analysis): the final one arrives by webhook and at GET /v1/decisions/{decision_id}.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "decision_id", "transaction_id", "decided_at", "decision", "final", "decided_by", "risk", "reasons", "actions", "fast_path_budget", "explanation", "latency_ms"],
+  "required": ["schema_version", "decision_id", "transaction_id", "decided_at", "decision", "final", "decided_by", "risk", "reasons", "actions", "explanation", "latency_ms"],
   "properties": {
     "schema_version": { "const": "1.0" },
     "decision_id": { "type": "string" },
@@ -113,7 +113,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["consumed", "remaining_count", "remaining_total_policy_minor"],
-      "description": "The fast-path budget after this decision.",
+      "description": "The fast-path budget after this decision. Phase 2: absent while only login anomalies are scored.",
       "properties": {
         "consumed": { "type": "boolean", "description": "true when this transaction went through the fast path and used the budget." },
         "remaining_count": { "type": "integer", "minimum": 0 },
