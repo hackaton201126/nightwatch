@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && nest build nightwatch && nest build demo-bank",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:e2e && npm run test:preflight",
     "test:preflight": "python3 -W ignore -m unittest discover -s preflight",
     "lint": "eslint .",
-    "start": "node dist/main.js",
-    "test:unit": "jest --runInBand --testRegex '.*\\.spec\\.ts$' --rootDir src",
-    "test:e2e": "jest --runInBand --testRegex '.*\\.e2e-spec\\.ts$' --rootDir test"
+    "start": "node dist/apps/nightwatch/apps/nightwatch/src/main.js",
+    "test:unit": "jest --runInBand --testRegex '.*\\.spec\\.ts$' --roots apps libs",
+    "test:e2e": "jest --runInBand --testRegex '.*\\.e2e-spec\\.ts$' --roots apps",
+    "start:demo-bank": "node dist/apps/demo-bank/apps/demo-bank/src/main.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@nestjs/cli": "^11.0.24",
     "@nestjs/testing": "^11.0.0",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
@@ -47,6 +49,9 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@app/contracts(|/.*)$": "<rootDir>/libs/contracts/src/$1"
+    }
   }
 }
