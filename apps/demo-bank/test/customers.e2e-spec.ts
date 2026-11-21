@@ -94,9 +94,13 @@ describe('demo bank customers (e2e)', () => {
       const page = await request(app.getHttpServer()).get('/bank');
       const row = page.text.split('<tbody>')[2];
       expect(row).toContain('Maria');
-      expect(row).toContain('class="badge step_up">step_up');
-      expect(row).toContain('class="chip">devin');
+      expect(row).toContain('class="badge step_up">Step-up');
+      expect(row).toContain('class="chip">Devin');
       expect(row).toContain('&lt;script&gt;');
+      const raw = await request(app.getHttpServer()).get('/bank/decisions');
+      expect(raw.body[0]).toMatchObject({ decision: 'step_up', decided_by: 'devin' });
+      expect(page.text).not.toMatch(/\p{Script=Cyrillic}/u);
+      for (const t of ['Passes at once', 'Jev decides', 'Devin decides']) expect(page.text).toContain(t);
       expect(page.text).not.toContain('<script>');
     });
 
@@ -170,6 +174,8 @@ describe('demo bank custom form (e2e)', () => {
     expect(parsed.session.network!.ip_country).toBe('GE');
     const page = await request(app.getHttpServer()).get('/bank');
     expect(page.text).toContain(parsed.transaction.transaction_id);
+    expect(page.text).toContain('Custom transaction');
+    expect(page.text).not.toMatch(/\p{Script=Cyrillic}/u);
   });
 
   it.each(['', '0', '-5', 'abc', '0.00'])('amount "%s" sends nothing and the page shows one error line', async (amountAed) => {
@@ -179,6 +185,7 @@ describe('demo bank custom form (e2e)', () => {
     const page = await request(app.getHttpServer()).get(res.headers.location);
     expect(page.text.match(/class="err"/g)).toHaveLength(1);
     expect(page.text).toContain('positive number');
+    expect(page.text).not.toMatch(/\p{Script=Cyrillic}/u);
   });
 
   it('refuses an unknown customer or choice and a missing country without sending', async () => {

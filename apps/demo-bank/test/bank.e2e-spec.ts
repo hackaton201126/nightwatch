@@ -48,9 +48,16 @@ describe('demo bank decisions (e2e)', () => {
     const page = await request(app.getHttpServer()).get('/bank');
     expect(page.status).toBe(200);
     expect(page.headers['content-type']).toContain('text/html');
-    for (const text of ['tx_e2e_1', 'hold', 'jev', '0.97', 'New device after a password reset.', '2026-11-21T02:00:20+04:00']) {
+    expect(page.text).not.toMatch(/\p{Script=Cyrillic}/u);
+    for (const text of ['tx_e2e_1', 'class="badge hold">Hold', 'class="chip">Jev', '0.97', 'New device after a password reset.', '2026-11-21T02:00:20+04:00']) {
       expect(page.text).toContain(text);
     }
+  });
+
+  it('empty page is English with the three path buttons on each card', async () => {
+    const page = await request(app.getHttpServer()).get('/bank');
+    expect(page.text).not.toMatch(/\p{Script=Cyrillic}/u);
+    for (const t of ['Passes at once', 'Jev decides', 'Devin decides']) expect(page.text).toContain(t);
   });
 
   it('rejects an invalid decision with 400 and keeps it off the list and the page', async () => {
