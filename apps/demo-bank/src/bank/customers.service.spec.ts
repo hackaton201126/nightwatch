@@ -1,7 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { riskRequestSchema, RiskRequest } from '@app/contracts';
 import { CUSTOMERS, PATH_IDS, PathId } from './customers.constants';
-import { CustomersService } from './customers.service';
+import { CustomChoices, CustomersService } from './customers.service';
 
 const NOW = new Date('2026-11-21T10:30:00Z'); // 14:30 Dubai
 const NIGHT_OWL = 'cus_dmitry';
@@ -144,6 +144,31 @@ describe('CustomersService', () => {
       const b = other.build(other.find(NIGHT_OWL)!, 'jev', NOW);
       expect(b.history).toEqual(a.history);
       expect(b.session.last_password_reset_at).toBe(a.session.last_password_reset_at);
+    });
+  });
+
+  describe('unchanged requests (snapshot at a fixed now, random ids normalised)', () => {
+    const normalise = (r: RiskRequest) =>
+      JSON.parse(
+        JSON.stringify(r)
+          .replace(/(tx_demo_[a-z]+_[a-z]+_)[0-9a-f]{8}/g, '$1<id>')
+          .replace(/ses_demo_[0-9a-f]{8}/g, 'ses_demo_<id>')
+          .replace(/ben_new_[0-9a-f]{6}/g, 'ben_new_<id>')
+          .replace(/(dev_new_[a-z]+_)[0-9a-f]{6}/g, '$1<id>'),
+      );
+    const unchanged = cases.filter(([id, path]) => !(id === NIGHT_OWL && path === 'jev'));
+    it.each(unchanged)('%s %s request is unchanged', (id, path) => {
+      expect(normalise(build(id, path))).toMatchSnapshot();
+    });
+
+    const choices: CustomChoices[] = [
+      { amountMinor: 500000, beneficiary: 'known', device: 'usual', network: 'home', country: 'GB', loginTime: 'now' },
+      { amountMinor: 5000000, beneficiary: 'new', device: 'new', network: 'vpn', country: 'GB', loginTime: 'night' },
+      { amountMinor: 2000000, beneficiary: 'new', device: 'usual', network: 'country', country: 'TR', loginTime: 'now' },
+    ];
+    const customCases = CUSTOMERS.flatMap((c) => choices.map((ch, i) => [c.id, i, ch] as [string, number, CustomChoices]));
+    it.each(customCases)('%s custom form request #%i is unchanged', (id, _i, ch) => {
+      expect(normalise(svc.buildCustom(svc.find(id)!, ch, NOW))).toMatchSnapshot();
     });
   });
 
