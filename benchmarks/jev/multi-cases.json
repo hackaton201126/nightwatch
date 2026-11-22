@@ -1,0 +1,85 @@
+{
+  "baseline": {
+    "geo": {
+      "current_ip_country": "AE",
+      "previous_ip_country": "AE",
+      "minutes_since_previous_success": 8,
+      "current_anonymizer": "none_detected",
+      "previous_anonymizer": "none_detected"
+    },
+    "time": {
+      "login_hour_local": 9,
+      "prior_successes": 7,
+      "distance_to_nearest_seen_hour": 0
+    },
+    "device": {"age_minutes": 200000},
+    "credentials": {"log_complete": true, "password_reset_age_minutes": null, "mfa_change_age_minutes": 2880},
+    "failures": {"count_in_preceding_hour": 0}
+  },
+  "cases": {
+    "routine": {
+      "overrides": {}
+    },
+    "rapid-country-change": {
+      "overrides": {"geo": {"current_ip_country": "DE"}},
+      "yes": ["rapid_ip_country_change"]
+    },
+    "unusual-hour": {
+      "overrides": {"time": {"login_hour_local": 2, "distance_to_nearest_seen_hour": 7}},
+      "yes": ["unusual_login_hour"]
+    },
+    "new-device": {
+      "overrides": {"device": {"age_minutes": 9}},
+      "yes": ["new_login_device"]
+    },
+    "password-reset": {
+      "overrides": {"credentials": {"password_reset_age_minutes": 12}},
+      "yes": ["recent_credential_change"]
+    },
+    "mfa-change": {
+      "overrides": {"credentials": {"mfa_change_age_minutes": 16}},
+      "yes": ["recent_credential_change"]
+    },
+    "failure-burst": {
+      "overrides": {"failures": {"count_in_preceding_hour": 4}},
+      "yes": ["failed_login_burst"]
+    },
+    "vpn-exit": {
+      "overrides": {"geo": {"current_ip_country": "DE", "current_anonymizer": "vpn"}}
+    },
+    "travel-time-gap": {
+      "overrides": {"geo": {"current_ip_country": "DE", "minutes_since_previous_success": 720}}
+    },
+    "missing-telemetry": {
+      "overrides": {
+        "geo": {"current_ip_country": null, "current_anonymizer": null},
+        "time": {"prior_successes": 1, "distance_to_nearest_seen_hour": null},
+        "device": {"age_minutes": null},
+        "credentials": {"log_complete": false, "mfa_change_age_minutes": null},
+        "failures": {"count_in_preceding_hour": null}
+      },
+      "unknown": ["rapid_ip_country_change", "unusual_login_hour", "new_login_device", "recent_credential_change", "failed_login_burst"]
+    },
+    "missing-telemetry-with-burst": {
+      "overrides": {
+        "geo": {"current_ip_country": null, "current_anonymizer": null},
+        "time": {"prior_successes": 1, "distance_to_nearest_seen_hour": null},
+        "device": {"age_minutes": null},
+        "credentials": {"log_complete": false, "mfa_change_age_minutes": null},
+        "failures": {"count_in_preceding_hour": 4}
+      },
+      "unknown": ["rapid_ip_country_change", "unusual_login_hour", "new_login_device", "recent_credential_change"],
+      "yes": ["failed_login_burst"]
+    },
+    "combined-signals": {
+      "overrides": {
+        "geo": {"current_ip_country": "DE"},
+        "time": {"login_hour_local": 2, "distance_to_nearest_seen_hour": 7},
+        "device": {"age_minutes": 9},
+        "credentials": {"mfa_change_age_minutes": 16},
+        "failures": {"count_in_preceding_hour": 4}
+      },
+      "yes": ["rapid_ip_country_change", "unusual_login_hour", "new_login_device", "recent_credential_change", "failed_login_burst"]
+    }
+  }
+}

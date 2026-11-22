@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Nightwatch, a pre-execution bank transfer risk screening prototype for THE CIS SPRINT.">
+  <title>Nightwatch · THE CIS SPRINT</title>
+  <link rel="stylesheet" href="presentation.css">
+  <script src="presentation.js" defer></script>
+</head>
+<body>
+  <header class="toolbar">
+    <a href="#opening" class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Nightwatch</span>
+    </a>
+    <span class="event-name">THE CIS SPRINT</span>
+    <div class="toolbar-actions">
+      <button class="button mobile-outline js-only" id="outline-toggle" type="button" aria-controls="outline" aria-expanded="false">Slides</button>
+      <button class="button js-only" id="notes-toggle" type="button" aria-label="Speaker notes" aria-pressed="false" aria-keyshortcuts="N">
+        <span class="notes-icon" aria-hidden="true"></span><span class="notes-label">Speaker notes</span><span class="notes-short-label" aria-hidden="true">Notes</span>
+      </button>
+      <button class="button primary js-only" id="present-toggle" type="button" aria-keyshortcuts="F">
+        <span class="fullscreen-icon" aria-hidden="true"></span> Present
+      </button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <nav class="outline" id="outline" aria-label="Slides">
+      <div class="outline-group">
+        <h2>Talk <span>5 min</span></h2>
+        <ol>
+          <li><a href="#opening"><span>01</span> The 2:00 a.m. transfer</a></li>
+          <li><a href="#screening"><span>02</span> Three stages</a></li>
+          <li><a href="#message-flow"><span>03</span> One transfer, end to end</a></li>
+          <li><a href="#demo"><span>04</span> Two transfers</a></li>
+          <li><a href="#bank-policy"><span>05</span> Why Nightwatch</a></li>
+          <li><a href="#benchmark"><span>06</span> Why Jev screens first</a></li>
+          <li><a href="#roadmap"><span>07</span> Product roadmap</a></li>
+        </ol>
+      </div>
+      <p class="outline-hint js-only">
+        <kbd>←</kbd> <kbd>→</kbd> Navigate <span>·</span> <kbd>N</kbd> Notes
+      </p>
+    </nav>
+
+    <main class="viewer" id="viewer">
+      <div class="viewer-meta js-only">
+        <span>Talk</span>
+        <span id="current-time">0:00–0:35</span>
+      </div>
+
+      <div class="deck" id="deck">
+        <section class="slide" id="opening" data-time="0:00–0:35" aria-labelledby="title-opening">
+          <div class="stage cover">
+            <div class="cover-copy">
+              <p class="eyebrow"><span class="signal-dot" aria-hidden="true"></span> Blue track · THE CIS SPRINT</p>
+              <h1 id="title-opening">Nightwatch</h1>
+              <p class="cover-line">Fast transfer screening.<br>Checks in plain language.</p>
+              <p class="cover-detail">Run several risk checks in one call in less than one second.</p>
+              <p class="team-credit">Two Shawarma Team</p>
+            </div>
+            <figure class="cover-art">
+              <img class="cover-image" src="assets/night-shift.jpg" alt="A night-shift analyst reviews a queue of transfers." fetchpriority="high">
+              <figcaption class="operator-prompt">
+                <p class="operator-request"><strong>AED 450,000</strong><time datetime="02:00">02:00</time></p>
+                <p class="operator-question">Release this transfer?</p>
+                <p class="operator-context">New device · Recent sign-in</p>
+                <ul class="operator-options" aria-label="Operator choices"><li>Block</li><li>Allow</li></ul>
+              </figcaption>
+            </figure>
+          </div>
+          <aside class="speaker-notes" aria-label="Speaker notes for the opening">
+            <h2>Speaker notes <span>0:00–0:35</span></h2>
+            <p class="cue"><strong>0:00 · Open on the decision.</strong> Point to the amount and time. Look up and pause for two beats after the question, then continue.</p>
+            <p>“It’s two in the morning. A transfer for four hundred and fifty thousand dirhams is waiting to go out. The sign-in passed authentication. The device is new, and the transfer follows seconds after sign-in. Would you release it?”</p>
+            <p>“We’re Two Shawarma Team. We built Nightwatch to give the bank a recommendation and reasons before it moves the money. Let me show you how we screen a transfer.”</p>
+          </aside>
+        </section>
+
+        <section class="slide" id="screening" data-time="0:35–1:00" aria-labelledby="title-screening">
+          <div class="stage">
+            <header class="slide-heading">
+              <p class="eyebrow">Pilot workflow</p>
+              <h2 id="title-screening">What is Nightwatch?</h2>
+              <p class="slide-summary">Nightwatch combines Devin Automations with TypeSafe’s Jev to screen transfers and recommend an action to the bank’s back office. The bank decides what to do with the transfer.</p>
+            </header>
+
+            <ol class="workflow" aria-label="Nightwatch screening stages">
+              <li>
+                <div class="workflow-stage"><span class="step-number">1</span><h3>Algorithmic rules</h3></div>
+                <p>A transfer qualifies if it meets the amount and 24-hour limits and shows no takeover red flags.</p>
+                <p class="workflow-output">Eligible → Recommend allow</p>
+              </li>
+              <li class="highlight">
+                <span class="workflow-arrow" aria-hidden="true">→</span>
+                <div class="workflow-stage"><span class="step-number">2</span><h3>Preflight check</h3></div>
+                <p>One Jev call evaluates several plain-language questions and returns a structured answer for each.</p>
+                <p class="workflow-output">Clear result → Recommend action</p>
+              </li>
+              <li class="review-stage">
+                <span class="workflow-arrow" aria-hidden="true">→</span>
+                <div class="workflow-stage"><span class="step-number">3</span><h3>Devin review</h3></div>
+                <p>Review cases when Jev reports low confidence, returns conflicting answers, or fails. Give the back office reasons for the recommendation.</p>
+                <p class="workflow-output">Findings → Back office</p>
+              </li>
+            </ol>
+            <p class="architecture-note"><strong>Example check</strong> · Does this sign-in show signs of account takeover given the account’s history?</p>
+          </div>
+          <aside class="speaker-notes" aria-label="Speaker notes for risk screening">
+            <h2>Speaker notes <span>0:35–1:00</span></h2>
+            <p class="cue"><strong>0:35 · Trace the three routes.</strong> Move left to right. Give Jev’s two answers and Devin’s escalation one beat each.</p>
+            <p>“Rules can recommend release without a model call. Otherwise, Devin Preflight asks Jev two questions in one call. How likely is takeover? What kind of sign-in is this? Low confidence, conflicting answers or a failed check trigger a Devin review. Let’s follow that route.”</p>
+            <h3 class="notes-subheading">Routing detail for rehearsal</h3>
+            <p>The rules check the amount, recent transfer totals and takeover flags. Jev returns a takeover probability and a sign-in classification with its own confidence. Preflight escalates when classification confidence is below 50%, when the probability and classification conflict under the routing rules, or when the check fails. The bank owns the final action.</p>
+            <p class="source-line"><a href="https://github.com/hackaton201126/nightwatch/blob/e554a31ca02b0f00254a3f6b61f5072bd2fac570/preflight/nightwatch_preflight.py">Nightwatch · Prototype routing</a> <a href="https://docs.typesafe.ai/patterns/fan-out">TypeSafe · Parallel questions</a> <a href="https://docs.devin.ai/product-guides/automations#preflight-checks">Cognition · Preflight checks</a></p>
+          </aside>
+        </section>
+
+        <section class="slide" id="message-flow" data-time="1:00–1:20" aria-labelledby="title-message-flow">
+          <div class="stage flow-stage">
+            <header class="slide-heading">
+              <p class="eyebrow">Suspicious transfer · PoC flow</p>
+              <h2 id="title-message-flow">One transfer, end to end.</h2>
+            </header>
+
+            <div class="message-flow">
+              <div class="flow-actors" aria-label="Participants">
+                <div class="flow-actor">Customer</div>
+                <div class="flow-actor">Bank back office</div>
+                <div class="flow-actor flow-automation">
+                  <span>Devin Automation</span>
+                  <strong>Nightwatch</strong>
+                </div>
+                <div class="flow-actor"><span>TypeSafe</span><strong>Jev</strong></div>
+              </div>
+              <div class="flow-sequence">
+                <div class="flow-lifelines" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+                <ol class="flow-steps" aria-label="Message sequence">
+                  <li class="flow-step" style="--lane: 1; --step: 0">
+                    <span class="flow-message">Transfer request<span class="visually-hidden"> from the customer to the bank back office</span></span>
+                    <span class="flow-line" aria-hidden="true"><span class="flow-packet"></span></span>
+                  </li>
+                  <li class="flow-step" style="--lane: 2; --step: 1">
+                    <span class="flow-message">Risk case via webhook<span class="visually-hidden"> from the bank back office to Nightwatch</span></span>
+                    <span class="flow-line" aria-hidden="true"><span class="flow-packet"></span></span>
+                  </li>
+                  <li class="flow-step" style="--lane: 3; --step: 2">
+                    <span class="flow-message">Case + two questions<span class="visually-hidden"> from Nightwatch to Jev</span></span>
+                    <span class="flow-line" aria-hidden="true"><span class="flow-packet"></span></span>
+                  </li>
+                  <li class="flow-step flow-return" style="--lane: 3; --step: 3">
+                    <span class="flow-message">Risk + classification<span class="visually-hidden"> from Jev to Nightwatch</span></span>
+                    <span class="flow-line" aria-hidden="true"><span class="flow-packet"></span></span>
+                  </li>
+                  <li class="flow-step flow-review" style="--step: 4">
+                    <span class="flow-message">Devin session review<span class="visually-hidden"> triggered by Nightwatch after a low-confidence Jev answer</span></span>
+                  </li>
+                  <li class="flow-step flow-return" style="--lane: 2; --step: 5">
+                    <span class="flow-message">Hold recommendation<span class="visually-hidden"> from Nightwatch to the bank back office via callback</span></span>
+                    <span class="flow-line" aria-hidden="true"><span class="flow-packet"></span></span>
+                  </li>
+                  <li class="flow-step flow-return" style="--lane: 1; --step: 6">
+                    <span class="flow-message">Transfer on hold<span class="visually-hidden"> shown to the customer by the bank</span></span>
+                    <span class="flow-line" aria-hidden="true"><span class="flow-packet"></span></span>
+                  </li>
+                </ol>
+              </div>
+            </div>
+
+            <div class="flow-footer">
+              <p class="slide-footnote">The bank decides whether to release or hold the transfer.</p>
+              <button class="button primary js-only" id="play-flow" type="button">Play message flow</button>
+            </div>
+          </div>
+          <aside class="speaker-notes" aria-label="Speaker notes for the message flow">
+            <h2>Speaker notes <span>1:00–1:20</span></h2>
+            <p class="cue"><strong>1:00 · Start the animation as you speak.</strong> Select <strong>Play message flow</strong>. Follow the request across to Jev, point to the Devin review, then follow the recommendation back to the bank. If playback stalls, trace the same three points on the static diagram.</p>
+            <p>“The bank sends a risk case by webhook. When Jev’s confidence is low, Preflight starts a Devin session with the case, computed signals and Jev’s answers. The bank gets the recommendation by callback and decides what the customer sees. Now compare two transfers.”</p>
+            <p class="cue">The animation compresses time. The prototype matches the callback to the original request by <code>transaction_id</code>. The last arrow shows what the bank would tell the customer in this example.</p>
+            <p class="source-line"><a href="https://github.com/hackaton201126/nightwatch/blob/e554a31ca02b0f00254a3f6b61f5072bd2fac570/apps/demo-bank/src/bank/transaction-sender.service.ts">PoC · Bank webhook</a> <a href="https://github.com/hackaton201126/nightwatch/blob/e554a31ca02b0f00254a3f6b61f5072bd2fac570/preflight/nightwatch_preflight.py">PoC · Nightwatch Preflight and callback</a></p>
+          </aside>
+        </section>
+
+        <section class="slide" id="demo" data-time="1:20–3:05" aria-labelledby="title-demo">
+          <div class="stage demo-stage">
+            <header class="slide-heading">
+              <p class="eyebrow">Synthetic walkthrough</p>
+              <h2 id="title-demo">Two transfers, two outcomes.</h2>
+              <p class="slide-summary">AED 450,000 each · Both sign-ins show an IP country outside the UAE</p>
+            </header>
+
+            <div class="transfer-comparison">
+              <table aria-labelledby="title-demo">
+                <thead>
+                  <tr><td></td><th scope="col">Routine transfer</th><th scope="col">Suspicious transfer</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">Risk signals</th>
+                    <td>
+                      <ul><li>Known device and beneficiary</li><li>Amount fits payment history</li><li>Usual session activity</li></ul>
+                    </td>
+                    <td>
+                      <ul><li>New device and recent access reset</li><li>Unusually large transfer</li><li>18 seconds after sign-in</li></ul>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Jev estimates</th>
+                    <td><p><strong>9%</strong> takeover probability</p><p>Legitimate sign-in · <strong>94%</strong> confidence</p></td>
+                    <td><p><strong>73%</strong> takeover probability</p><p>Uncertain sign-in · <strong>49%</strong> confidence</p></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Example bank action</th>
+                    <td><div class="case-outcome"><span class="decision-pill allowed">Allow</span><p>Balance <strong>AED 260,000</strong></p></div></td>
+                    <td><div class="case-outcome"><span class="decision-pill held">Hold</span><p>Balance <strong>AED 710,000</strong></p></div></td>
+                  </tr>
+                </tbody>
+              </table>
+              <dl class="case-explanations" aria-label="Example context Devin supplies to the bank">
+                <div><dt>Customer message · Bank draft</dt><dd>We’ve paused your transfer while we verify it.</dd></div>
+                <div><dt>Devin analyst brief · Example</dt><dd>Access reset and new device suggest possible takeover. Verify via a previously registered channel.</dd></div>
+              </dl>
+            </div>
+            <p class="slide-footnote">Both transfers exceed the fast-path amount limit. Each account starts with AED 710,000.</p>
+          </div>
+          <aside class="speaker-notes" aria-label="Speaker notes for the demo">
+            <h2>Speaker notes <span>1:20–3:05</span></h2>
+            <p class="cue"><strong>Before the pitch.</strong> Open the demo bank’s <code>/bank</code> page in a second tab. Rehearse a case routed to Jev and one escalated to Devin. Have a recording of both callbacks ready if the live run stalls. The preset buttons generate cases intended for those routes. Confirm the route from <strong>Decided by</strong>.</p>
+            <p class="cue"><strong>1:20 · Set up the comparison.</strong> Point to the amount and country signal shared by both examples.</p>
+            <p>“Here are two synthetic examples. Same amount, four hundred and fifty thousand dirhams. Both sign-ins have an IP country outside the UAE. Both transfers need screening. Here’s what changes when we look at the account history.”</p>
+            <p class="cue"><strong>By 1:35 · Show the live result.</strong> Switch to the bank tab and submit the rehearsed escalation case first so it can run while you show the Jev case. Use the transaction ID to match each row under <strong>Sent to Nightwatch</strong> with its row under <strong>Nightwatch decisions</strong>.</p>
+            <p>“This is our demo bank. Each callback shows the recommendation, which route produced it, and an explanation for the analyst. For the escalated case, that explanation gives the analyst a concrete next step.”</p>
+            <p class="cue">Point to <strong>Decision</strong>, <strong>Decided by</strong> and one reason in the analyst explanation. Call out the observed values. If a result differs from the rehearsal, report what the row shows. If the callback is still missing by 2:25, say “I’ll show you a recorded run,” play the relevant clip, and return to the slide. If a clip is unavailable, continue with the two examples on the slide.</p>
+            <p class="cue"><strong>By 2:35 · Return to the slide.</strong> Use the table to show what the recommendations would mean for the customer and the bank. Point to <strong>Allow</strong> and <strong>Hold</strong>, then to the analyst brief.</p>
+            <p>“On the left, a familiar device and payee support release. The balance would drop to two hundred and sixty thousand dirhams. On the right, a new device and recent access reset raise concern. Jev’s low confidence triggers Devin. The bank can hold the payment and verify through a channel it has on file. Here’s why that matters to risk teams.”</p>
+            <p class="cue">The percentages, balances and customer message on this slide are illustrative. The demo bank displays recommendations and analyst explanations. If you are short on time, keep the shared amount, the new device and reset, and the two bank actions.</p>
+            <p class="source-line"><a href="https://github.com/hackaton201126/nightwatch/blob/e554a31ca02b0f00254a3f6b61f5072bd2fac570/apps/demo-bank/src/bank/bank-page.service.ts">PoC · Demo bank and callback table</a></p>
+          </aside>
+        </section>
+
+        <section class="slide" id="bank-policy" data-time="3:05–3:55" aria-labelledby="title-bank-policy">
+          <div class="stage">
+            <header class="slide-heading">
+              <h2 id="title-bank-policy">Why Nightwatch?</h2>
+            </header>
+
+            <ul class="benefits-grid" aria-labelledby="title-bank-policy">
+              <li class="panel benefit-metric">
+                <h3>298 ms</h3>
+                <p>Median time to a valid Jev response.</p>
+              </li>
+              <li class="panel benefit-metric">
+                <h3>60% lower</h3>
+                <p>Estimated model cost per call vs. GPT‑6 Luna with caching disabled.</p>
+              </li>
+              <li class="panel">
+                <h3>Less data to share</h3>
+                <p>One API takes agreed risk signals. Names, account IDs and raw IPs stay with the bank.</p>
+              </li>
+              <li class="panel benefit-wide">
+                <h3>Quick to add checks</h3>
+                <p>Risk teams write questions in plain language. Engineers test and deploy them without retraining the model.</p>
+              </li>
+              <li class="panel benefit-wide">
+                <h3>Improve with feedback</h3>
+                <p><strong>Roadmap</strong> · The bank confirms outcomes, Devin proposes revisions, and the team tests and rolls out approved checks.</p>
+              </li>
+            </ul>
+            <p class="slide-footnote">Prototype benchmark · 18 synthetic sign-ins · One question per call</p>
+          </div>
+          <aside class="speaker-notes" aria-label="Speaker notes for Nightwatch benefits">
+            <h2>Speaker notes <span>3:05–3:55</span></h2>
+            <p class="cue"><strong>3:05 · Connect the demo to the bank’s work.</strong> Start with what changes for the risk team. Point to the latency figure as you introduce the benchmark.</p>
+            <p>“Say the risk team wants to check whether a device appeared shortly after an access reset. An analyst can write the question in plain language. Engineers can replay sample cases, check what comes back and deploy the change without retraining a model. If those signals are already available, the bank can keep the same integration.”</p>
+            <p>“For a pilot, we’d agree which risk signals to send and keep names, account IDs and raw IP addresses inside the bank. We’d also keep the decision trail in the bank’s own systems. In our first-pass test with caching disabled, Jev took about 300 milliseconds at the median and had a 60 percent lower estimated model cost per call than GPT‑6 Luna.”</p>
+            <h3 class="notes-subheading">Pilot assumptions for rehearsal</h3>
+            <p>The current demo sends synthetic case data. Data minimisation and retention are design work for a bank pilot. Use an opaque case ID for correlation and confirm what both providers receive and retain. Jev’s input-only pricing covers the model call. Measure end-to-end latency, escalation frequency and total operating cost during the pilot.</p>
+          </aside>
+        </section>
+
+        <section class="slide" id="benchmark" data-time="3:55–4:25" aria-labelledby="title-benchmark">
+          <div class="stage">
+            <header class="slide-heading">
+              <p class="eyebrow">First-pass benchmark</p>
+              <h2 id="title-benchmark">Why Jev screens first.</h2>
+            </header>
+
+            <div class="comparison-grid">
+              <figure class="panel comparison-chart">
+                <figcaption>Median time to valid JSON</figcaption>
+                <p class="comparison-result"><strong>5.7×</strong> faster than GPT‑6 Luna</p>
+                <ul class="comparison-bars">
+                  <li class="jev-measure">
+                    <div><span>Jev</span><strong>298 ms</strong></div>
+                    <div class="bar-track" aria-hidden="true"><div style="--share: 17.42%"></div></div>
+                  </li>
+                  <li>
+                    <div><span>GPT‑6 Luna</span><strong>1.708 s</strong></div>
+                    <div class="bar-track" aria-hidden="true"><div style="--share: 100%"></div></div>
+                  </li>
+                </ul>
+              </figure>
+              <figure class="panel comparison-chart">
+                <figcaption>Estimated model cost per 1M calls</figcaption>
+                <p class="comparison-result"><strong>60%</strong> lower than GPT‑6 Luna</p>
+                <ul class="comparison-bars">
+                  <li class="jev-measure">
+                    <div><span>Jev</span><strong>$78.87</strong></div>
+                    <div class="bar-track" aria-hidden="true"><div style="--share: 39.84%"></div></div>
+                  </li>
+                  <li>
+                    <div><span>GPT‑6 Luna</span><strong>$197.98</strong></div>
+                    <div class="bar-track" aria-hidden="true"><div style="--share: 100%"></div></div>
+                  </li>
+                </ul>
+              </figure>
+            </div>
+            <p class="slide-footnote">18 synthetic sign-ins · One question per call · GPT‑6 Luna via Chat Completions, cache disabled<br>Cached replay · Jev’s estimated cost was 3.4% higher when Luna hit the cache on 17 of 18 calls.</p>
+          </div>
+          <aside class="speaker-notes" aria-label="Speaker notes for the benchmark">
+            <h2>Speaker notes <span>3:55–4:25</span></h2>
+            <p class="cue"><strong>3:55 · Read the measured rows together.</strong> Point to the latency bars, then the cost comparison and the cached replay.</p>
+            <p>“On eighteen synthetic sign-ins, Jev took about three hundred milliseconds at the median. GPT‑6 Luna took one point seven seconds through Chat Completions. With caching disabled, Jev’s estimated model cost was sixty percent lower. When Luna reused cached inputs on seventeen calls, Jev cost about three percent more. The pilot would measure the actual mix of requests.”</p>
+            <h3 class="notes-subheading">Benchmark detail for rehearsal</h3>
+            <p>Saved run <code>compare-t0qr66tt</code> compares Jev 1.14.0 with <code>gpt-6-luna</code> via <code>/v1/chat/completions</code>, using Structured Outputs and the standard tier. Both returned valid answers on all 18 cases and met the predefined probability ranges on the six cases with range checks. Luna recorded zero cache reads and writes.</p>
+            <p>Cost estimates use observed tokens and public list rates. Jev used 33,801 input tokens. Luna used 24,611 input and 2,205 completion tokens, including reasoning. In the cached replay <code>compare-80hti35t</code>, Luna recorded 23,593 cached input tokens and projected to $76.29 per million calls. Jev projected to $78.87 in both runs.</p>
+            <p class="source-line"><a href="https://help.typesafe.ai/articles/5187202169-how-much-does-jev-cost">TypeSafe · Jev pricing</a> <a href="https://developers.openai.com/api/docs/models/gpt-6-luna">OpenAI · GPT‑6 Luna pricing</a></p>
+          </aside>
+        </section>
+
+        <section class="slide" id="roadmap" data-time="4:25–5:00" aria-labelledby="title-roadmap">
+          <div class="stage closing">
+            <header class="slide-heading">
+              <p class="eyebrow">Product roadmap</p>
+              <h2 id="title-roadmap">More context. Better questions.</h2>
+            </header>
+
+            <div class="boundaries">
+              <div class="panel boundary">
+                <p class="eyebrow">Phase 1 · Prototype</p>
+                <h3>Sign-in risk</h3>
+                <p>Rules check the transfer. Jev assesses the sign-in.</p>
+              </div>
+              <div class="panel boundary">
+                <p class="eyebrow">Phase 2 · Next</p>
+                <h3>Activity and transfers</h3>
+                <p>Use recent account actions and transfer patterns, such as new payees or a burst of payments.</p>
+              </div>
+              <div class="panel boundary">
+                <p class="eyebrow">Phase 3 · Later</p>
+                <h3>Improve Jev’s questions</h3>
+                <p>A scheduled Devin Automation proposes changes based on outcomes confirmed by the bank.</p>
+              </div>
+            </div>
+
+            <div class="roadmap-feedback">
+              <p class="eyebrow" id="feedback-loop-title">Phase 3 · Feedback loop</p>
+              <ol class="timing-strip" aria-labelledby="feedback-loop-title">
+                <li><strong>Confirm outcomes</strong><span>The bank verifies cases reported by customers or support</span></li>
+                <li><strong>Propose revisions</strong><span>Devin checks Jev’s answers against confirmed outcomes</span></li>
+                <li><strong>Replay both versions</strong><span>The same held-out test cases</span></li>
+                <li><strong>Compare results</strong><span>Fraud caught, false holds and score calibration</span></li>
+              </ol>
+            </div>
+          </div>
+          <aside class="speaker-notes" aria-label="Speaker notes for the product roadmap">
+            <h2>Speaker notes <span>4:25–5:00</span></h2>
+            <p class="cue"><strong>4:25 · Give the next step and close.</strong> Point to the roadmap once. Turn back to the judges for the final sentence and finish by 4:55 to leave a few seconds for handover.</p>
+            <p>“Next we’d add signals like a new payee followed by a burst of payments. We’d replay labelled transfers against the bank’s current rules and check whether we catch more fraud at the same false-hold rate. Devin can use confirmed outcomes to propose changes for the risk team to test. Nightwatch gives the bank evidence to act before the money moves. Thank you.”</p>
+            <h3 class="notes-subheading">Pilot scorecard for rehearsal</h3>
+            <p>Use bank-confirmed outcomes and replay the same held-out cases against both versions. Compare confirmed fraud caught, legitimate transfers held and calibration. For example, among cases scored near 80%, roughly eight in ten should be confirmed takeovers if the score is well calibrated. Measure callback time by route and the share of cases that require a Devin session.</p>
+            <p class="source-line"><a href="https://docs.devin.ai/product-guides/automations#schedule-triggers">Cognition · Schedule triggers for Devin Automations</a> <a href="https://docs.typesafe.ai/primitives#define-a-question">TypeSafe · Question and answer criteria</a> <a href="https://scikit-learn.org/stable/modules/calibration.html">scikit-learn · Probability calibration</a></p>
+          </aside>
+        </section>
+      </div>
+
+      <footer class="viewer-controls js-only">
+        <div class="slide-counter">
+          <output id="slide-count" aria-live="polite" aria-atomic="true">01 / 07</output>
+          <progress id="slide-progress" max="7" value="1" aria-label="Presentation progress"></progress>
+        </div>
+        <div class="pager">
+          <button class="button exit-present" id="exit-present" type="button">Exit presentation</button>
+          <button class="button arrow-button" id="previous-slide" type="button" aria-label="Previous slide" aria-keyshortcuts="ArrowLeft">←</button>
+          <button class="button arrow-button" id="next-slide" type="button" aria-label="Next slide" aria-keyshortcuts="ArrowRight">→</button>
+        </div>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

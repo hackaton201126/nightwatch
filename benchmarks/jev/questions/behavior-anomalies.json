@@ -1,0 +1,42 @@
+{
+  "rapid_ip_country_change": {
+    "type": "noul",
+    "instructions": "Do the two latest successful sign-ins show a rapid change between distant IP countries? Use only the geo fields. IP country describes network egress. Evaluate only this signal and use a probability near 0.5 when the required evidence is missing.",
+    "criteria": {
+      "true": "Both IP countries are known and far apart, such as AE and DE. At most 30 minutes elapsed and both anonymizer values are none_detected.",
+      "false": "The IP country matches, more than 30 minutes elapsed, or a reported VPN or proxy makes the country jump ambiguous."
+    }
+  },
+  "unusual_login_hour": {
+    "type": "noul",
+    "instructions": "Is the current sign-in at an unusual hour for this customer? Use only the time fields. Compare hours in the customer timezone using the supplied circular distance. Evaluate only this signal and use a probability near 0.5 when the distance is unavailable or fewer than five prior successful sign-ins are available.",
+    "criteria": {
+      "true": "At least five prior successes are available and the current hour is at least four hours from the nearest observed hour.",
+      "false": "At least five prior successes are available and the current hour is less than four hours from the nearest observed hour."
+    }
+  },
+  "new_login_device": {
+    "type": "noul",
+    "instructions": "Is the successful sign-in on a device first seen by the bank within the preceding 24 hours? Use only the device fields. Evaluate only this signal and use a probability near 0.5 when the recorded device age is missing.",
+    "criteria": {
+      "true": "The device age at sign-in is between zero and 1440 minutes inclusive.",
+      "false": "The device age at sign-in exceeds 1440 minutes."
+    }
+  },
+  "recent_credential_change": {
+    "type": "noul",
+    "instructions": "Was a password reset or an MFA change recorded within the 60 minutes before the successful sign-in? Use only the credentials fields. Evaluate only this signal. If neither event meets the window and the event log is incomplete, use a probability near 0.5. In a complete log a null age means no recorded event.",
+    "criteria": {
+      "true": "At least one of the password reset and MFA change ages is between zero and 60 minutes inclusive.",
+      "false": "The event log is complete and both event ages are either null or greater than 60 minutes."
+    }
+  },
+  "failed_login_burst": {
+    "type": "noul",
+    "instructions": "Did at least three failed sign-ins for this account precede the current successful sign-in by at most one hour? Use only the failures fields. Evaluate only this signal and use a probability near 0.5 when the count is missing.",
+    "criteria": {
+      "true": "The account has three or more failed sign-ins in the preceding hour.",
+      "false": "The observed count of failed sign-ins in the preceding hour is zero, one, or two."
+    }
+  }
+}

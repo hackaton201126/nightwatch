@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "as_of": "2026-11-21T10:12:00+04:00",
+  "transaction": {
+    "transaction_id": "txn-demo-new-country-03",
+    "requested_at": "2026-11-21T10:11:00+04:00",
+    "channel": "mobile",
+    "initiator_id": "customer-demo",
+    "source_account_id": "account-demo",
+    "amount": {
+      "currency": "AED",
+      "minor_units": 1200000
+    },
+    "amount_policy_minor": 1200000,
+    "authorization": "authorized",
+    "beneficiary": {
+      "beneficiary_id": "beneficiary-demo"
+    }
+  },
+  "customer": {
+    "customer_id": "customer-demo",
+    "timezone": "Asia/Dubai"
+  },
+  "session": {
+    "authenticated_at": "2026-11-21T10:07:00+04:00",
+    "auth_factors": [
+      "password",
+      "face_id"
+    ],
+    "device_id": "device-demo",
+    "device_first_seen_at": "2026-03-01T09:00:00+04:00",
+    "last_password_reset_at": null,
+    "last_mfa_change_at": null,
+    "network": {
+      "ip_ref": "ip-demo-bh",
+      "ip_country": "BH",
+      "anonymizer": "none_detected"
+    }
+  },
+  "history": {
+    "recent_login_attempts": [
+      {
+        "occurred_at": "2026-11-13T10:00:00+04:00",
+        "outcome": "success",
+        "network": {
+          "ip_ref": "ip-demo-ae",
+          "ip_country": "AE",
+          "anonymizer": "none_detected"
+        },
+        "device_id": "device-demo"
+      },
+      {
+        "occurred_at": "2026-11-15T09:30:00+04:00",
+        "outcome": "success",
+        "network": {
+          "ip_ref": "ip-demo-ae",
+          "ip_country": "AE",
+          "anonymizer": "none_detected"
+        },
+        "device_id": "device-demo"
+      },
+      {
+        "occurred_at": "2026-11-17T08:40:00+04:00",
+        "outcome": "success",
+        "network": {
+          "ip_ref": "ip-demo-ae",
+          "ip_country": "AE",
+          "anonymizer": "none_detected"
+        },
+        "device_id": "device-demo"
+      },
+      {
+        "occurred_at": "2026-11-19T10:11:00+04:00",
+        "outcome": "success",
+        "network": {
+          "ip_ref": "ip-demo-ae",
+          "ip_country": "AE",
+          "anonymizer": "none_detected"
+        },
+        "device_id": "device-demo"
+      },
+      {
+        "occurred_at": "2026-11-20T05:02:00Z",
+        "outcome": "success",
+        "network": {
+          "ip_ref": "ip-demo-ae",
+          "ip_country": "AE",
+          "anonymizer": "none_detected"
+        },
+        "device_id": "device-demo"
+      },
+      {
+        "occurred_at": "2026-11-21T10:07:00+04:00",
+        "outcome": "success",
+        "device_id": "device-demo",
+        "network": {
+          "ip_ref": "ip-demo-bh",
+          "ip_country": "BH",
+          "anonymizer": "none_detected"
+        }
+      }
+    ],
+    "recent_outgoing_requests": [],
+    "windows": {
+      "24h": {
+        "attempted_count": 0,
+        "attempted_amount_policy_minor": 0
+      }
+    }
+  },
+  "policy": {
+    "currency": "AED",
+    "fast_path_budget": {
+      "window_seconds": 21600,
+      "effective_max_count": 5,
+      "effective_max_total_policy_minor": 200000,
+      "effective_max_single_policy_minor": 100000,
+      "used_count": 0,
+      "used_total_policy_minor": 0
+    }
+  }
+}

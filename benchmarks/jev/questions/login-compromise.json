@@ -1,0 +1,10 @@
+{
+  "login_compromise_indicators": {
+    "type": "noul",
+    "instructions": "Does the final element of `request.history.recent_login_attempts` (the current login) show signs of possible account takeover compared with the earlier entries? Base the judgment on login data. Use `facts.country_seen_in_successful_logins` to interpret `facts.ip_country` and `facts.distance_to_nearest_seen_hour` to interpret `facts.login_hour_local`. A true `facts.thin_history` indicates limited history. Treat null values in `facts` as unavailable evidence.",
+    "criteria": {
+      "true": "The current login has a meaningful geographic or timing deviation that supports suspicion of unauthorized access. A change between distant IP countries from `facts.previous_successful_login.ip_country` to `facts.ip_country` within minutes (`facts.previous_successful_login.seconds_before_current_login`) can support yes when `facts.previous_successful_login.anonymizer` and `facts.anonymizer` both report `none_detected`. At an unusual login hour, a newly seen device (`facts.device_age_minutes`), a recent password reset (`facts.minutes_since_password_reset`), a recent MFA change (`facts.minutes_since_mfa_change`), or preceding failed attempts (`facts.failed_logins_1h_before`) can support concern.",
+      "false": "The current login fits the geographic and time patterns indicated by `facts.country_seen_in_successful_logins` and `facts.distance_to_nearest_seen_hour`, or the observed difference has a plausible explanation. For example, a VPN exit in `facts.anonymizer` can explain a country change when the hour is familiar (`facts.hour_seen_in_successful_logins`) and the device is longstanding (`facts.device_age_minutes`)."
+    }
+  }
+}

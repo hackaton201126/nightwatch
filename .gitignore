@@ -4,3 +4,7 @@ coverage/
 graphify-out/
 *.tsbuildinfo
 __pycache__/
+
+/benchmarks/jev/.env
+/benchmarks/jev/.venv/
+/benchmarks/jev/responses/
