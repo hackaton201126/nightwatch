@@ -1,6 +1,6 @@
 # Nightwatch
 
-**Second place at THE CIS SPRINT · Two Shawarma Team**
+**Second place at THE CIS SPRINT · Two-Shawarma Team**
 
 Nightwatch is a hackathon prototype for screening outgoing bank transfers. The demo bank sends a transfer for assessment and receives an allow, step-up, hold or block recommendation through a callback. Nightwatch applies deterministic rules first, asks TypeSafe's Jev to assess sign-in signals when needed, and escalates uncertain cases to Devin. The bank decides whether to release the transfer.
 
